@@ -207,7 +207,8 @@ fields:
   calculation order.
 - **Shared view fields.** `viewFields: { <name>: { <field>: decl } }` names a set of declared
   fields; a link slot's or a participant role's `fields` may be that name instead of the map
-  (5E's attack actions share `target`).
+  (5E's attack actions share `target`), in rules or content. A set's family keys expand where
+  it is declared, so a content action's role naming it gets the expanded fields too.
 - **Errors:** a placeholder naming no family, a view-field name naming no set, an addition to a
   family that doesn't exist, a key that comes out twice, a family or set declared twice:
   `invalid-family` (data: `pack`, `message`).
@@ -300,7 +301,7 @@ tags:
 
 - Declaring `damage.fire` also declares `damage`.
 - A pack may use its dependencies' tags.
-- The build rejects undeclared static tags (`unknown-tag`). A tag computed by a formula is checked when the action runs.
+- The build rejects undeclared static tags (`unknown-tag`). A tag computed by a formula is checked when the action runs. A tag on a change an app gives applyChanges is checked there: an undeclared one rejects the batch (`unknown-tag`), so a misspelled or qualified tag (`5e-srd-5.1:damage.fire`; tags are never qualified) isn't applied silently, matching no effect or follow-up. An app applying changes to a linked character (an action's changes `to` a link or role) must load that character with a ruleset that declares the tags it sends.
 - Tags are data, not text. Apps may show labels from the optional translation key `tags.<tag>.name`.
 
 ### Which tags a field takes

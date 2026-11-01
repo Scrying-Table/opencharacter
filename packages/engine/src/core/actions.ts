@@ -1739,7 +1739,7 @@ function rollStep(ctx: Ctx, frame: Frame, step: Step, path: string): void {
   for (const instance of sheet.instances) {
     const t = targets(instance.effect);
     if (!t || !t.rolls.some((tag) => matchesTag(tag, stepTags))) continue;
-    if (t.from === 'self' && instance.source.entry !== frame.entry) continue;
+    if (t.from === 'self' && !ownEffect(instance, frame)) continue;
     candidates.push({
       instance,
       effect: instance.effect,
@@ -2731,10 +2731,23 @@ function optionFrame(frame: Frame, instance: EffectInstance): Frame {
  * copy's to its own actions.
  */
 function addsToSteps(instance: EffectInstance, frame: Frame, from: string | undefined): boolean {
-  const { type, id, entry } = instance.source;
+  const { type, id } = instance.source;
   if (type === 'rules') return from !== 'self' && id !== undefined;
   if (type !== 'item' && type !== 'template') return false;
-  return id !== undefined && (from !== 'self' || entry === frame.entry);
+  return id !== undefined && (from !== 'self' || ownEffect(instance, frame));
+}
+
+/**
+ * Whether `from: self` matches: the effect's copy is the action's entry, and for an action run
+ * for content granted or picked under the copy (named by `source`) the content carrying the
+ * effect is that content, so granted abilities sharing their type's action each reach only their
+ * own runs. A template is part of its copy: its own action matches by entry, as the copy's does.
+ */
+function ownEffect(instance: EffectInstance, frame: Frame): boolean {
+  if (instance.source.entry !== frame.entry) return false;
+  const kind = frame.activation?.kind;
+  if (frame.source === undefined || (kind !== 'grant' && kind !== 'pick')) return true;
+  return instance.source.id === frame.source;
 }
 
 /** Of instances sharing a `stackKey` or an ID, only the first is offered. */
@@ -3595,20 +3608,27 @@ function offerFollowUp(
 ): Change | undefined {
   if (!test(ctx, frame, change.when, bound)) return undefined;
   const ref = change.followUp ?? '';
-  const owner: Source | undefined =
-    frame.adder ?? (frame.qid.includes('#') ? frame.activation?.source : undefined);
+  const owners = [frame.adder, frame.qid.includes('#') ? frame.activation?.source : undefined];
+  let owner: Source | undefined;
   let id: string | undefined;
   let def: FollowUp | undefined;
-  if (owner && owner.type !== 'rules' && owner.id !== undefined) {
-    const item = ctx.ruleset.content[owner.id];
-    def = item?.followUps?.find((fu: FollowUp) => fu.id === ref);
-    if (item && def) id = `${item.qid}#${ref}`;
-    else if (item) {
+  for (const candidate of owners) {
+    if (!candidate || candidate.type === 'rules' || candidate.id === undefined) continue;
+    const item = ctx.ruleset.content[candidate.id];
+    if (!item) continue;
+    def = item.followUps?.find((fu: FollowUp) => fu.id === ref);
+    if (def) id = `${item.qid}#${ref}`;
+    else {
       const type = ctx.ruleset.contentTypes[item.type];
       def = type?.followUps?.find((fu: FollowUp) => fu.id === ref);
       if (type && def) id = `${type.pack}:${type.name}#${ref}`;
     }
-  } else {
+    if (id) {
+      owner = candidate;
+      break;
+    }
+  }
+  if (!id) {
     const qid = ref.includes(':') ? ref : `${frame.pack}:${ref}`;
     def = ctx.ruleset.rules.followUps.find((fu) => `${fu.pack}:${fu.id}` === qid);
     if (def) id = qid;
@@ -3624,7 +3644,7 @@ function offerFollowUp(
   return {
     type: 'offerFollowUp',
     followUp: id,
-    ...(owner && owner.type !== 'rules' && owner.id !== undefined ? { source: owner } : {}),
+    ...(owner ? { source: owner } : {}),
     ...(change.params ? { params: values } : {}),
   } as Change;
 }
