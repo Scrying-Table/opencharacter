@@ -9,6 +9,7 @@ viewFields:
     combat.elusive: { type: boolean, default: false }
     protection.evilAndGood: { type: boolean, default: false }
     sanctuary.dc: { type: integer, default: 0 }
+    huntersMark.markedBy: { type: set, of: string, default: [] }
     sanctuary.beastsAndPlantsDc: { type: integer, default: 0 }
     combat.noCriticals: { type: boolean, default: false }
     combat.attackersDisadvantage: { type: boolean, default: false }
@@ -58,6 +59,13 @@ fields:
   monk.kiEmpoweredStrikes: { type: boolean, formula: false }
   protection.evilAndGood: { type: boolean, formula: false }
   sanctuary.dc: { type: integer, formula: 0, min: 0 }
+  # The characters whose Hunter's Mark is on this creature, by character ID.
+  huntersMark.markedBy:
+    type: set
+    of: string
+    formula: >-
+      mapList(filterList(character.applied, x.active && x.source == @spells.hunters-mark
+        && has(x.state.caster) && x.state.caster != ''), x.state.caster)
   combat.elusive: { type: boolean, formula: false }
   combat.uncannyDodge: { type: boolean, formula: false }
   sanctuary.beastsAndPlantsDc: { type: integer, formula: 0, min: 0 }
@@ -341,6 +349,8 @@ actions:
                       && !('two-handed' in item.tags) && !('property.heavy' in item.tags)))
               dice: "self.wielding == 'two-handed' && has(item.versatileDamage) ? item.versatileDamage : item.damage"
               crit: combat.critRange
+              # The slot level a Divine Smite picked on the hit spends, 0 for none.
+              smiteSlot: 0
               ac: >-
                 size(participants.target) > 0 && item.range == 'ranged'
                     && has(participants.target[0].combat.rangedAc)
@@ -409,7 +419,7 @@ actions:
         kind: choice
         tags: [weapon-hit]
         when: >-
-          combat.hitOptions > 0
+          (combat.hitOptions > 0 || (item.range == 'melee' && combat.meleeHitOptions > 0))
             && (flags.hit || (has(steps.confirm) && steps.confirm.picked == 'hit')
               || (has(steps.luck) && steps.luck.picked != 'miss'))
         options: [{ id: none }]

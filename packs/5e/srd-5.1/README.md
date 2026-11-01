@@ -60,7 +60,7 @@ the [guides](https://opencharacterformat.org/guides/) explain each call.
 - **Modeled:** abilities, skills and saves; creation (guided, random, point buy, standard
   array, rolled) and leveling to 20 with multiclassing; the nine races, the acolyte and the
   Grappler feat; all twelve classes and their SRD subclasses, feature by feature; all 319
-  spells (slots, Pact Magic, damage, healing, saves, conditions, and 31 spells' effects on the
+  spells (slots, Pact Magic, damage, healing, saves, conditions, and 37 spells' effects on the
   creature they are cast on); weapons, armor, gear, tools, mounts and vehicles; the SRD magic
   items; conditions and diseases; combat, damage, resting and death saves; all 322 monsters,
   with their attacks, legendary actions, spellcasting and forms. Details in
@@ -156,6 +156,10 @@ Where the SRD is unclear or silent, the pack reads it this way:
   - **point buy:** every base score starts at 8, then up to 27 points with the SRD's costs
     (`[0, 1, 2, 3, 4, 5, 7, 9][amount]`), each score at most 15;
   - **standard array:** 15, 14, 13, 12, 10 and 8.
+
+  The standard array is recommended, and each method recommends the scores by the class's
+  ability priority (below), the highest to its first ability (point buy at the same spread, 27
+  points). The race, subrace, class and background recommend nothing: they are the player's.
 
   Then what the race, class and background bring (a tool, a fighting style, skills, languages,
   a prepared caster's spells, …), one pick at a time; while creating, every pick must be made.
@@ -256,11 +260,18 @@ Where the SRD is unclear or silent, the pack reads it this way:
 - **Classes:** all twelve classes and their twelve SRD subclasses, feature by feature. Uses
   until a rest are state on the class copy (an invocation's on its pick, the breath weapon's
   `used` on the draconic ancestry pick, a racial trait's in its saved grant state); per-roll bonuses are situational choices; lasting
-  effects are boolean inputs; once per turn is the app's.
+  effects are boolean inputs; once per turn is the app's. Divine Smite is offered on a melee
+  weapon hit (one option per spell slot level left, and the pact slot): it spends the slot and
+  adds its radiant dice to the hit's damage roll, doubled on a critical hit.
 - **Spellcasting:** all 319 SRD spells as mechanics (level, school, class lists, casting time,
   range, components, duration, attack or save, damage and healing); class DCs and attack bonuses;
   spell slots by the multiclass table; Pact Magic; `cast-spell` with upcasting and cantrip
-  scaling; concentration; 31 spells whose effects apply to their target's sheet; racial spells;
+  scaling; concentration; 37 spells whose effects apply to their target's sheet, with the option
+  picked per cast where the spell offers one (`castOptions`: Protection from Energy's damage
+  type, Fire Shield's warm or chill shield, Enhance Ability's effect, Enlarge or Reduce,
+  Blindness or Deafness) read as the applied spell's `option`, and the caster as its `caster`
+  (Hunter's Mark: the caster's weapon hits on a creature whose `huntersMark.markedBy` view
+  holds the caster's ID deal an extra 1d6); racial spells;
   subclass spells; the wizard's spellbook (a spell only in the book is cast only as a ritual).
 - **Equipment:** every SRD weapon and armor, 135 gear items, 7 equipment packs, 35 tools, 8
   mounts and 11 vehicles, with cost (gp) and weight (lb) per unit. Extradimensional containers
@@ -321,9 +332,15 @@ fixed sets.
 
 ## Limitations
 
-Of the 152 class and subclass features, 8 have no mechanics, and 63 of the 318 magic items are
-text. Of the 319 spells, 200 do nothing on the sheet beyond spending the slot: what they do is
-their SRD text, for the app and the table (detection, illusions, summoning, movement, utility).
+Of the 152 class and subclass features, 8 have no mechanics, nor do 16 other options and traits:
+six Hunter's tactics (Escape the Horde, Giant Killer, Horde Breaker, Multiattack Defense, Stand
+Against the Tide, Steel Will), two invocations (Eyes of the Rune Keeper, Gaze of Two Minds), the
+Protection and Two-Weapon Fighting styles, Pact of the Blade, four traits (Halfling Nimbleness,
+Naturally Stealthy, Trance, Nimble Escape) and Shelter of the Faithful: 24 files in all. 63 of
+the 318 magic items are text. Of the 319 spells, 163 do nothing on the sheet beyond spending the
+slot (no attack, save, damage, healing, condition, applied effect or action of their own): what
+they do is their SRD text, for the app and the table (detection, illusions, summoning, movement,
+utility).
 
 - **The app's:** turns and action economy (Cunning Action, Fast Hands, Vanish, Persistent Rage,
   Nimble Escape; once per turn), the clock (durations, dawn, rests, crafting time), space and

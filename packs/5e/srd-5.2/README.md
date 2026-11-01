@@ -187,8 +187,9 @@ Where the SRD is unclear or silent, the pack reads it this way:
   - A smite is an option on a hit with a melee weapon or an Unarmed Strike: picking it casts the
     spell (the slot level asked on the attack) and adds its damage to the attack's, doubled on a
     Critical Hit. Hex's and Hunter's Mark's extra damage joins the caster's attack damage when the
-    target's view names the caster (`hex.cursedBy`, `huntersMark.markedBy`). Divine Favor doesn't
-    add to Unarmed Strikes.
+    target's view names the caster (`hex.cursedBy`, `huntersMark.markedBy`), and Precise Hunter's
+    Advantage applies against a target so marked (its `preciseHunter` situational choice stays for
+    an attack without the target's view). Divine Favor doesn't add to Unarmed Strikes.
   - Power Word Kill and Power Word Stun read the target's current Hit Points from its view
     (without them, the outcome is the table's); a killed creature drops to 0 Hit Points with three
     failed Death Saving Throws.
@@ -265,7 +266,12 @@ Where the SRD is unclear or silent, the pack reads it this way:
   A species trait keeps its own uses as its grant's saved state (Breath Weapon, Draconic Flight,
   Stonecunning, the lineage spells, Giant Ancestry, Large Form, Adrenaline Rush, Relentless
   Endurance); Stone's Endurance spends a Giant Ancestry use from its incoming-damage effect's
-  `then`, and is offered while one is left.
+  `then`, and is offered while one is left. Retaliation offers each melee weapon's attack, and
+  an Unarmed Strike, as follow-ups when the barbarian takes damage and stays up. Deflect Attacks
+  is a situational choice on an incoming attack (`deflectAttacks`): the damage change it is
+  selected on, if Bludgeoning, Piercing or Slashing (any type with Deflect Energy), is reduced by
+  1d10 plus the Dexterity modifier and Monk level, never below 0; the `deflect-attacks` action
+  still redirects the force.
 - **Spellcasting:** each class's cantrips and prepared spells (the table's counts), always-
   prepared subclass spells, the Multiclass Spellcaster slots, Pact Magic, the wizard's spellbook
   and Ritual Adept, Magic Initiate and species spells with their own ability, `cast-spell` with
@@ -359,6 +365,11 @@ as text are listed below.
   from higher slots, Enlarge/Reduce's size change, Chill Touch's no-regain, Beacon of Hope's
   maximum healing, Heroism's temporary hit points each turn, a second damage type for Transmuted
   Spell.
+- **Deflect Attacks per change, not per attack:** a situational choice reaches only the adjust
+  it is selected on, and its rolled reduction can't carry to the batch's other changes. So an
+  attack of several damage types is reduced on each change the app selects it on, not once on
+  the total; select it on one change (the Bludgeoning, Piercing or Slashing one) to apply it
+  once, and the other types' damage isn't reduced.
 - **Metamagic:** Distant, Quickened and Subtle Spell are recorded in the cast's `data.metamagic`
   for the app.
 - **Monsters:** movement and sense traits, revival traits, reactions that change a roll (Parry),
