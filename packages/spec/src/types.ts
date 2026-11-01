@@ -192,8 +192,8 @@ export type AllocateStep = {
   values?: Formula[];
   /** Boolean formula: when it holds, the engine recommends a random answer instead of `recommend`. With `values`, each value in order goes to a field drawn uniformly among the offered fields not given one yet. With a budget, one unit at a time goes to a field drawn uniformly among those that can take one more (within its limit, the unit's added cost positive and within what is left), until the budget is spent or no field can take more; with `spend: all`, a draw that leaves some of the budget unspent gives no recommendation. Each draw is a dice checkpoint at the step's path, as on a choice step. */
   random?: Formula;
-  /** The recommended amounts: by field ID (local or qualified), an integer formula. Fields left out get nothing. Used only when it is a valid answer. */
-  recommend?: Record<string, Formula>;
+  /** The recommended amounts: by field ID (local or qualified), an integer formula, or one formula evaluated for each offered field with `field` bound (`{ id, value }`, as for `limit`), giving its amount or `null` for none. Fields left out get nothing, and entries for fields the step doesn't offer are ignored, so one step recommends for whichever fields it offers. Used only when it is a valid answer. */
+  recommend?: Record<string, Formula> | Formula;
   /** The question. Default key: `<actionKey>.steps.<id>.prompt`. */
   prompt?: I18nKey;
 };
@@ -772,6 +772,8 @@ export type ChoiceTree = Record<string, ChoicePick[]>;
 export type ChoicePick = {
   /** A qualified content ID, an inline option ID, or a value. */
   option: string | number;
+  /** A pick of an `addAs: copy` choice: the instance ID of the copy it holds, which `choose` added and removing the pick removes. */
+  entry?: InstanceId;
   choices?: ChoiceTree;
   /** Values for state keys the picked content declares (its content type's or its own), as a copy's state. The picked content sees them as `self.<key>`; a key at its default is left out. */
   state?: Record<string, Literal>;
@@ -833,9 +835,13 @@ export type Choice = {
   eligible?: Condition;
   /** When the choice applies, e.g. `self.level >= 3`. Until then it is neither pending nor active. */
   when?: Condition;
+  /** When the picks are active, an activation condition like `when`. While the choice applies and this is false, it is asked and its picks are saved and counted as usual, but they aren't active: picked content and inline options don't activate, and the choice's `effects` don't run; the picks' own choices are still listed and asked, inactive in turn. So a rule usable only while an input holds (5 Victories) keeps its picks without leaving the choice pending. */
+  activeWhen?: Condition;
+  /** Content choices (a query or `items`): `copy` holds each pick as a copy of the picked item instead of activating it in place. `choose` adds the copy (in `inventory` for carried types, else `features`) as `addItem` would and saves its instance ID on the pick (`entry`); removing the pick removes the copy, and `removeItem` of the copy is `picked-copy`. A trinket of your choice. Not with `activate`, `activeWhen` or `waivePrerequisites` (a copy is held as any copy, its prerequisites checked). Grant-only content can't be added, so it is `option-not-eligible`. A grant can't preset it: `pnpm validate` reports one. */
+  addAs?: 'copy';
   /** A required choice with too few picks is reported as pending. Default true. */
   required?: boolean;
-  /** Optional formula naming the option the rules recommend (an option ID or value). */
+  /** Optional formula naming the option the rules recommend (an option ID or value). It sees `options`: the options the choice offers that are eligible apart from prerequisites (in `from` and its `where`, passing `eligible`, not taken in another choice of its `unique` group) and not among its own picks, in the order offered (content IDs, inline option IDs, or a value choice's strings or numbers), so a choice whose options depend on the character can recommend one (`options[0]`). */
   recommend?: Formula;
   /** Effects applied once per pick, with the picked option visible as `pick` (its `id` or `value`). Used when options are values or fields rather than content (choose two skills), or picks that aren't activated (`activate: false`). */
   effects?: Effect[];
@@ -872,7 +878,7 @@ export type Options =
       options: InlineOption[];
     };
 
-/** An option defined inside the choice. Translation keys: `<owner>.choices.<choice>.options.<id>.name`. */
+/** An option defined inside the choice. Translation keys: `<owner>.choices.<choice>.options.<id>.name`, and an optional `<owner>.choices.<choice>.options.<id>.description` (Markdown), as content items have. */
 export type InlineOption = {
   id: Slug;
   tags?: Tags;
@@ -880,6 +886,8 @@ export type InlineOption = {
   effects?: Effect[];
   grants?: Grant[];
   choices?: Choice[];
+  /** Applied content the character can't be affected by while the option is picked and active, as a content item's `immuneTo`. The `immune` issue's `id` is the option's source ID plus the immunity's (`<owner>/<choice>/<option>/<id>`). */
+  immuneTo?: Immunity[];
 };
 
 /** A pack ID: lowercase words joined by hyphens, with dots allowed between them, e.g. `5e-srd-5.1`. By convention `<game>-<pack folder>`. */
@@ -1977,7 +1985,8 @@ export type CheckReleaseOutput = {
       | 'tag-removed'
       | 'action-removed'
       | 'enum-closed'
-      | 'extension-removed';
+      | 'extension-removed'
+      | 'choice-copies-changed';
     id: string;
     data?: Record<string, unknown>;
   }[];
@@ -2175,6 +2184,8 @@ export type ListedChoice = {
   open: boolean;
   /** `true` when a grant presets the choice (its `choices`): `picks` are the grant's, the choice is never open, and `choose` and `unchoose` on it are `preset-choice`. */
   preset?: true;
+  /** `true` while the choice's `activeWhen` fails, or while it belongs to a pick of such a choice (at any depth): its picks are kept and counted, but neither activated nor applied. */
+  inactive?: true;
 };
 
 export type CompetingOptions = {
@@ -3087,6 +3098,7 @@ export type ErrorCode =
   | 'not-owned'
   | 'duplicate-id'
   | 'standard-copy'
+  | 'picked-copy'
   | 'not-per-copy'
   | 'not-addable'
   | 'not-equippable'
@@ -3165,5 +3177,6 @@ export type RulesIssueCode =
   | 'content-hidden'
   | 'immune'
   | 'already-picked'
+  | 'picked-copy-invalid'
   | 'out-of-limits'
   | 'too-many-copies';

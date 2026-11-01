@@ -205,6 +205,7 @@ export interface InlineOption {
   effects?: Effect[];
   grants?: Grant[];
   choices?: Choice[];
+  immuneTo?: Immunity[];
   /** Loaded: the pack an option another pack's choice gained comes from (`extendChoices`). */
   pack?: string;
 }
@@ -230,6 +231,10 @@ export interface Choice {
   effects?: Effect[];
   /** Content choices: `false` keeps the picks inactive, references only. */
   activate?: boolean;
+  /** An activation condition: while false, the picks are kept but neither active nor applied. */
+  activeWhen?: Formula;
+  /** Content choices: `copy` holds each pick as a copy of its own, added and removed with it. */
+  addAs?: 'copy';
   prompt?: string;
   eligible?: Formula;
   waivePrerequisites?: boolean;

@@ -20,7 +20,14 @@ import type {
   ValueDecl,
 } from './pack-types.ts';
 import { appliesQueries, thenRule } from './pack-types.ts';
-import { admitsTag, declaredTags, type LoadedItem, localPart, type Ruleset } from './ruleset.ts';
+import {
+  admitsTag,
+  declaredTags,
+  type LoadedItem,
+  localPart,
+  type Ruleset,
+  standardId,
+} from './ruleset.ts';
 import { homebrewIdsInUse, withHomebrew, withoutHomebrew } from './homebrew.ts';
 import {
   type Activation,
@@ -35,7 +42,7 @@ import {
   Sheet,
   type Source,
 } from './sheet.ts';
-import { samePath, treeFor } from './tree.ts';
+import { dropUnpicked, pickLinks, samePath, treeFor } from './tree.ts';
 import {
   pickState,
   appliedView,
@@ -193,7 +200,13 @@ export function applyBatch(
       continue;
     }
     try {
+      // The copies picks hold now: a change that removes their picks removes them too.
+      const held =
+        pickLinks(next).size > 0
+          ? [...new Sheet(ruleset, next, [], links).pickedCopies().keys()]
+          : [];
       const patch = applyOne(ruleset, next, change as AnyChange, adjustments, links, dice, sheets);
+      if (held.length > 0) dropUnpicked(next, held);
       // An adjust comes back with the faces it used, an applyEffect with its computed state.
       applied.push(patch ? ({ ...change, ...patch } as Change) : change);
     } catch (error) {
@@ -299,8 +312,10 @@ function noPicks(
 function dropDefaultStandard(ruleset: Ruleset, sheet: Sheet, c: CharacterDoc): boolean {
   const saved = new Set(sheet.standard.filter((s) => s.saved).map((s) => s.entry));
   if (saved.size === 0) return false;
+  // A copy a pick names is the pick's, never dropped as a standard copy at its defaults.
+  const linked = pickLinks(c);
   const atDefaults = (entry: Entry): boolean => {
-    if (!saved.has(entry.id)) return false;
+    if (!saved.has(entry.id) || linked.has(entry.id)) return false;
     if (entry.equipped === true || (entry.quantity ?? 1) !== 1) return false;
     if ((entry.templates ?? []).length > 0 || !noPicks(entry.choices)) return false;
     if (Object.keys(entry.grants ?? {}).length > 0) return false;
@@ -875,6 +890,9 @@ function applyOne(
       // Every character has a standard copy: it can't be removed.
       if (sheet.standard.some((s) => s.entry === id))
         throw new ChangeError('standard-copy', { entry: id });
+      // A pick's copy goes with its pick.
+      const pickedBy = sheet.pickedCopies().get(id);
+      if (pickedBy) throw new ChangeError('picked-copy', { entry: id, path: pickedBy });
       entryOf(id);
       c.features = (c.features ?? []).filter((e) => e.id !== id);
       c.inventory = (c.inventory ?? []).filter((e) => e.id !== id);
@@ -1108,6 +1126,25 @@ function applyOne(
         throw new ChangeError('invalid-option', { option });
       if (picks.some((p) => p.option === option))
         throw new ChangeError('duplicate-id', { id: option });
+      if (record.choice.addAs === 'copy' && typeof option === 'string') {
+        // The pick holds a copy of its own, added as addItem adds one. Its ID ends `_pick`, which
+        // no standard copy's derived ID can (content IDs have no `_`).
+        const used = usedIds(c, sheet);
+        const base = `${standardId(option)}_pick`;
+        let id = base;
+        for (let n = 2; used.has(id); n++) id = `${base}-${n}`;
+        applyOne(
+          ruleset,
+          c,
+          { type: 'addItem', entry: { id, item: option } },
+          adjustments,
+          links,
+          dice,
+          sheets,
+        );
+        tree[key] = [...picks, { option, entry: id }];
+        return;
+      }
       tree[key] = [...picks, { option }];
       return;
     }

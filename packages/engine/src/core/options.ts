@@ -96,18 +96,10 @@ export function optionsOn(
       .map((item) => ({ option: item.qid, inQuery: matches.has(item.qid) }));
   }
 
-  let recommended: unknown;
-  if (choice.recommend !== undefined) {
-    recommended = safe(
-      () => f.toData(sheet.evaluate(choice.recommend as string, pack, sheet.ownRoots(record))),
-      undefined,
-    );
-  }
-
-  const options = candidates.map(({ option, inQuery, sourceId }): OptionResult => {
-    const picked = record.picks.some((p) => p.option === option);
+  // Exclusivity and eligibility apart from prerequisites: what `recommend` sees as `options`.
+  const group = sheet.uniqueKey(record);
+  const early = candidates.map(({ option, inQuery, sourceId }): RulesIssue[] => {
     const reasons: RulesIssue[] = [];
-    const group = sheet.uniqueKey(record);
     // Repeatable content is exempt from exclusivity groups.
     if (group && !sheet.repeatable(option)) {
       const elsewhere = sheet.choices.find(
@@ -133,6 +125,30 @@ export function optionsOn(
         source: owner.source,
         data: { option },
       });
+    return reasons;
+  });
+
+  let recommended: unknown;
+  if (choice.recommend !== undefined) {
+    // The choice's own picks are left out, so `options[0]` is the next one to pick.
+    const offered = candidates
+      .filter((c, i) => early[i]?.length === 0 && !record.picks.some((p) => p.option === c.option))
+      .map((c) => c.option);
+    recommended = safe(
+      () =>
+        f.toData(
+          sheet.evaluate(choice.recommend as string, pack, {
+            ...sheet.ownRoots(record),
+            options: offered,
+          }),
+        ),
+      undefined,
+    );
+  }
+
+  const options = candidates.map(({ option, sourceId }, index): OptionResult => {
+    const picked = record.picks.some((p) => p.option === option);
+    const reasons: RulesIssue[] = [...(early[index] ?? [])];
     // Evaluated as if the option were picked; a pick that isn't activated has none. Only an option
     // that declares prerequisites (itself or an inline option of its choices) can have any, so the
     // trial sheet is built for those alone.
@@ -155,7 +171,16 @@ export function optionsOn(
       if (holder) {
         const key = String(path.choice.at(-1));
         holder[key] = holder[key] ?? [];
-        if (!holder[key].some((p) => p.option === option)) holder[key].push({ option });
+        if (!holder[key].some((p) => p.option === option)) {
+          holder[key].push({ option });
+          // A pick held as a copy is checked as that copy.
+          if (choice.addAs === 'copy') {
+            const item = ruleset.content[String(option)];
+            const list =
+              item && ruleset.contentTypes[item.type]?.carried ? 'inventory' : 'features';
+            trial[list] = [...(trial[list] ?? []), { id: '#trial', item: String(option) }];
+          }
+        }
       }
       const after = new Sheet(ruleset, trial, [], links);
       reasons.push(...after.prerequisiteIssues(sourceId ?? String(option)));

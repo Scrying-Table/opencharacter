@@ -41,3 +41,35 @@ export function samePath(a: ChoicePath, b: ChoicePath): boolean {
     a.choice.every((s, i) => s === b.choice[i])
   );
 }
+
+/** The instance IDs saved picks name as their copies (`entry`), at any depth, as written. */
+export function pickLinks(character: CharacterDoc): Set<string> {
+  const out = new Set<string>();
+  const walk = (tree: ChoiceTree | undefined): void => {
+    for (const picks of Object.values(tree ?? {}))
+      for (const pick of picks ?? []) {
+        if (pick.entry !== undefined) out.add(pick.entry);
+        walk(pick.choices);
+      }
+  };
+  walk(character.choices);
+  for (const entry of [...(character.features ?? []), ...(character.inventory ?? [])])
+    walk(entry.choices);
+  return out;
+}
+
+/**
+ * Removes the copies in `held` (picks' copies before a change) whose links the change removed,
+ * then those whose links went with them (picks of a removed copy), until none is left.
+ */
+export function dropUnpicked(character: CharacterDoc, held: Iterable<string>): void {
+  const ids = new Set(held);
+  for (;;) {
+    const linked = pickLinks(character);
+    const has = (id: string) => ids.has(id) && !linked.has(id);
+    const entries = [...(character.features ?? []), ...(character.inventory ?? [])];
+    if (!entries.some((e) => has(e.id))) return;
+    if (character.features) character.features = character.features.filter((e) => !has(e.id));
+    if (character.inventory) character.inventory = character.inventory.filter((e) => !has(e.id));
+  }
+}

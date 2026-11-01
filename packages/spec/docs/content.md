@@ -979,25 +979,38 @@ never be valid, and `pnpm validate` reports them.
 
 A **choice** ([`choice.schema.json`](../schemas/choice.schema.json)) is declared on content, on an inline option, or in the rules:
 
-| Property    | Meaning                                                                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`        | Unique among its owner's choices                                                                                                                          |
-| `slots`     | Integers written out: one choice per slot, keyed `<id>-<slot>`, with `slot` bound ([below](#choice-slots))                                                |
-| `from`      | Where the options come from: a **query**, `{ items: [refs] }`, `{ values }` (plain values such as skill names; below), or `{ options: [inline options] }` |
-| `pick`      | Count (formula) or `{ min, max }`. Default 1.                                                                                                             |
-| `when`      | When it applies (`self.level >= 1`). Before that it is neither pending nor active.                                                                        |
-| `required`  | Default true. A required choice with too few picks is pending.                                                                                            |
-| `recommend` | Formula naming the recommended option                                                                                                                     |
-| `effects`   | Applied once per pick, with the option bound to `pick`. Used for value options ("grant proficiency in `pick.value`").                                     |
-| `activate`  | Content choices: `false` keeps the picks inactive (below). Default true.                                                                                  |
-| `prompt`    | Override for the default key `<owner>.choices.<id>.prompt`                                                                                                |
-| `eligible`  | Per option, apart from `from`: a condition with `item` (content) or `value`, and `choice` ([below](#eligibility-and-own-picks))                           |
+| Property     | Meaning                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | Unique among its owner's choices                                                                                                                          |
+| `slots`      | Integers written out: one choice per slot, keyed `<id>-<slot>`, with `slot` bound ([below](#choice-slots))                                                |
+| `from`       | Where the options come from: a **query**, `{ items: [refs] }`, `{ values }` (plain values such as skill names; below), or `{ options: [inline options] }` |
+| `pick`       | Count (formula) or `{ min, max }`. Default 1.                                                                                                             |
+| `when`       | When it applies (`self.level >= 1`). Before that it is neither pending nor active.                                                                        |
+| `required`   | Default true. A required choice with too few picks is pending.                                                                                            |
+| `recommend`  | Formula naming the recommended option; `options` is bound ([below](#eligibility-and-own-picks))                                                           |
+| `effects`    | Applied once per pick, with the option bound to `pick`. Used for value options ("grant proficiency in `pick.value`").                                     |
+| `activate`   | Content choices: `false` keeps the picks inactive (below). Default true.                                                                                  |
+| `activeWhen` | When the picks are active (`victories >= 5`); while it fails they are kept but inactive ([below](#picks-active-only-while-a-condition-holds))             |
+| `addAs`      | Content choices: `copy` holds each pick as a copy of its own, added and removed with the pick ([below](#picks-held-as-copies))                            |
+| `prompt`     | Override for the default key `<owner>.choices.<id>.prompt`                                                                                                |
+| `eligible`   | Per option, apart from `from`: a condition with `item` (content) or `value`, and `choice` ([below](#eligibility-and-own-picks))                           |
 
 Picked **content** becomes active: its effects, grants and its own choices apply. Content that
 declares state (its type's or its own) keeps it on the pick: it reads
 `self.<key>` from the pick's `state` (else the declared default) over the owner's copy, and
 `setState` and `adjustState` change it by the pick's `path` and `option`, or `pick: self` in its
-own action ([engine-core.md](engine-core.md#applychanges)). An **inline option** (`id`, `tags`, `prerequisites`, `effects`, `grants`, `choices`) behaves the same way. Text: `<owner>.choices.<choice>.options.<id>.name`.
+own action ([engine-core.md](engine-core.md#applychanges)). An **inline option** (`id`, `tags`, `prerequisites`, `effects`, `grants`, `choices`, `immuneTo`) behaves the same way. Text: `<owner>.choices.<choice>.options.<id>.name`, and an optional `<owner>.choices.<choice>.options.<id>.description` (Markdown), so a random table of named paragraphs (a d6 of inciting incidents) is a choice of inline options. Its `immuneTo` holds while it is picked and active, as an item's does ([above](#when-content-is-active)); the `immune` issue's `id` is the option's source ID plus the immunity's (`<owner>/<choice>/<option>/<id>`):
+
+```yaml
+# A title's benefit: Slippery can't be grabbed against your will.
+- id: benefit
+  from:
+    options:
+      - id: slippery
+        immuneTo: [{ id: grab, items: [conditions.grabbed] }]
+      - id: quick
+        effects: [{ target: speed, op: add, value: 1 }]
+```
 
 computeSheet lists a character's applicable choices, answered or not, as `choices`, and the
 ones still needing picks as `pending` ([engine-core.md](engine-core.md#the-choice-list)).
@@ -1045,6 +1058,81 @@ still `content-hidden`.
   when: self.startingClass
   effects:
     - { target: proficiencies.tools, op: grant, value: { formula: pick.id } }
+```
+
+### Picks active only while a condition holds
+
+A choice may say `activeWhen`: a condition, evaluated as `when` is (an activation condition,
+reading input fields, `item`, `self` and `slot`). It doesn't decide whether the choice applies,
+only whether its picks are active:
+
+- While the choice applies and `activeWhen` holds, it is like any other choice.
+- While `activeWhen` fails, the choice is still listed, asked and counted: it is pending with
+  too few picks, and its saved picks are kept and checked against its options as usual. But
+  they aren't active: picked content and inline options don't activate (no effects, grants,
+  actions, follow-ups or immunities), and the choice's own `effects` don't run. The picks' own
+  choices are still walked, inactive in turn: listed, asked and pending as usual, their picks
+  kept and none active. computeSheet's choice list marks each such choice `inactive: true`
+  ([engine-core.md](engine-core.md#the-choice-list)). A hidden pick is still `content-hidden`.
+- With `activate: false` there is nothing to wake but the choice's `effects`; `pnpm validate`
+  warns.
+
+So the picks of a rule usable only under some condition are made once, at creation, and wake
+when it holds, where a `when` would leave the choice unasked until then:
+
+```yaml
+# Dragon Dreams: two dragon knight traits, usable with 5 or more Victories.
+- id: traits
+  pick: 2
+  from: { type: trait, where: "'dragon-knight' in item.tags" }
+  activeWhen: victories >= 5
+```
+
+### Picks held as copies
+
+A content choice (a query or `items`) may say `addAs: copy`: each pick is held as a copy of the
+picked item, not activated in place. "A trinket of your choice" is then a trinket in the
+inventory, equippable and with state, like one bought:
+
+- **Adding.** `choose` adds the copy as `addItem` would (in `inventory` for carried types,
+  else `features`; formula state defaults evaluated) and saves its instance ID on the pick as
+  `entry` ([characters.md](characters.md#choices-tree)). The ID is the option's derived ID (its
+  qualified ID with the colon and dots as hyphens) plus `_pick`, or plus `_pick-2`, `_pick-3`, …
+  when that is taken. Content IDs have no `_`, so it is never a
+  [standard copy's](#standard-copies) ID, and a copy a pick names is never adopted or dropped as
+  one.
+- **Eligible.** Grant-only content can't be added, so it is `option-not-eligible` in such a
+  choice. A grant can't preset the choice (`pnpm validate` reports it): a preset pick is never
+  chosen, so it would hold no copy.
+- **Active.** The pick activates nothing itself, so the item's effects apply once, through its
+  copy, as any copy's do (an equippable one's `when: self.equipped` while equipped). The choice's
+  own `effects` run per pick as usual. `listOptions` checks an option's prerequisites as that
+  copy's.
+- **Held as any copy.** Once added, the copy is an entry like one bought: it stays, and stays
+  active, while the choice's `when` fails or its owner is inactive (a class feature not yet
+  reached), as an item the character was given stays in the pack. Only removing the pick removes
+  it.
+- **Removing.** Removing the pick (`unchoose`, or removing what holds it, such as the owner's
+  entry or a pick it is nested under) removes its copy in the same change, and so does an
+  upgrade step that removes the pick (`removeChoice`, `renameOption` without `to`,
+  `removeContent` of what holds it). `removeItem` of the copy itself is `picked-copy`: the app
+  unchooses the pick instead.
+- **Links.** A pick's link holds when the choice is `addAs: copy` and `entry` names an entry of
+  the picked item that no earlier pick names. Any other saved link (no `entry`, an entry that is
+  gone or of another item, one an earlier pick names, or `entry` on a pick of a choice without
+  `addAs`) is the rules issue `picked-copy-invalid`, with data `problem` (`missing`,
+  `other-item`, `shared`, `not-held-as-copy`). Such an entry isn't the pick's copy: it is an
+  ordinary entry, and removing the pick leaves it.
+- `addAs` takes neither `activate`, `activeWhen` nor `waivePrerequisites` (a schema error);
+  values and inline options have no copies, which `pnpm validate` reports. Adding or dropping
+  `addAs` on a released choice is an interface change (`choice-copies-changed`,
+  [upgrades.md](upgrades.md#the-build-check)).
+
+```yaml
+# Secret Twin: a 1st-echelon trinket of your choice.
+- id: trinket
+  from: { type: treasure, where: "item.kind == 'trinket' && item.echelon == 1" }
+  addAs: copy
 ```
 
 **Nested choices:** an option's own choices become pending as soon as it is picked, and are
@@ -1161,6 +1249,24 @@ condition on the computed sheet. A `where` that reads the character is checked b
 `listOptions` with the option picked, a trial sheet per candidate: cheap for a few dozen options, slow for hundreds (orc-2e's class feats). A
 pack with long lists keeps `where` on the item (its level, its traits) and puts the
 character's part in `eligible`.
+
+**Recommending among the eligible.** A choice's `recommend` also sees `options`: the options it
+offers that are eligible apart from prerequisites and not picked yet, in the order offered
+(content IDs, inline option IDs, or a value choice's strings or numbers). An option is left out
+when it fails `from` (a query's `where`, a value choice's `where`, a value a formula no longer
+lists), fails `eligible`, is taken in another choice of its `unique` group, or is one of the
+choice's own picks, so with `pick: 2` and one picked, `options[0]` is the next to pick, as a
+choice step's `options` leaves out its earlier picks. Prerequisites, which need a trial sheet
+per option, aren't checked.
+So a choice whose options depend on the character still recommends one, and a guided or random
+start over pending choices doesn't stop there:
+
+```yaml
+# A heroic ability of the hero's class above their level, the first one recommended.
+- id: footsteps
+  from: { type: ability, where: 'item.class in classes && item.level > level' }
+  recommend: options[0]
+```
 
 A choice of inline options has no `eligible` (a schema error): its options have prerequisites.
 A pick another source also gives (an acolyte cleric's class skill Insight) passes such a

@@ -194,6 +194,7 @@ export interface ListedChoice {
   picks: (string | number)[];
   open: boolean;
   preset?: true;
+  inactive?: true;
 }
 
 function isOpen(record: ChoiceRecord, min: number): boolean {
@@ -228,6 +229,8 @@ export interface ChoiceRecord {
   slot?: { choice: string; number: number };
   /** A grant presets the choice: `picks` are the grant's, and it is never pending. */
   preset?: boolean;
+  /** Its `activeWhen` fails: the picks are kept, but neither activated nor applied. */
+  inactive?: boolean;
 }
 
 /** A choice, or with `slots` one choice per slot in list order, keyed `<id>-<slot>`. */
@@ -306,6 +309,7 @@ const issueOrder = [
   'too-many-picks',
   'option-not-eligible',
   'already-picked',
+  'picked-copy-invalid',
   'content-hidden',
   'immune',
 ];
@@ -1706,6 +1710,16 @@ export class Sheet {
       }
       return out;
     }
+    // An inline option's are named under its source ID (`<owner>/<choice>/<option>`).
+    if (a.kind === 'inline') {
+      for (const def of a.inline?.immuneTo ?? []) {
+        if ((def.scope ?? 'holder') !== a.scope) continue;
+        const id = `${a.sourceId}/${def.id}`;
+        if (this.condition(def.when, a.pack, a.roots, `${id} immunity`))
+          out.push({ def, pack: a.pack, owner: a, id, source: a.source });
+      }
+      return out;
+    }
     const item = a.item;
     if (!item) return out;
     const pack = item.scopes?.immuneTo ?? item.pack;
@@ -1936,15 +1950,50 @@ export class Sheet {
     );
   }
 
-  private pickedContent(record: ChoiceRecord, activation: Activation, depth: number): void {
+  private pickedContent(
+    record: ChoiceRecord,
+    activation: Activation,
+    depth: number,
+    dormant = false,
+  ): void {
     this.pickedIn.set(activation, record);
-    this.content(activation, depth);
+    if (!dormant) {
+      this.content(activation, depth);
+      return;
+    }
+    // An inactive pick: only its own choices are walked, inactive in turn, so they are still
+    // listed and asked; nothing of it applies, and it isn't an activation.
+    if (depth > MAX_DEPTH) {
+      this.errors.push({ code: 'safety-limit-exceeded', data: { limit: 'maxChoiceDepth' } });
+      return;
+    }
+    const item = activation.item;
+    const declared = item?.choices ?? activation.inline?.choices ?? [];
+    activation.roots = {
+      ...activation.roots,
+      [f.OWNER_PICKS]: ownerPicks(declared, activation.tree, activation.keyPrefix ?? ''),
+      [f.OWNER_GRANTED]: grantedPicks(activation.tree),
+    };
+    this.childOf(this.walking.at(-1), activation);
+    this.walking.push(activation);
+    try {
+      const pack = item ? (item.scopes?.choices ?? item.pack) : activation.pack;
+      this.walkChoices(
+        activation,
+        declared.map((choice) => ({ choice, pack })),
+        depth,
+        true,
+      );
+    } finally {
+      this.walking.pop();
+    }
   }
 
   private walkChoices(
     owner: Activation,
     choices: { choice: Choice; pack: string }[],
     depth: number,
+    dormant = false,
   ): void {
     const expanded = choices.flatMap(({ choice, pack }) =>
       expandSlots(choice).map((e) => ({ ...e, pack })),
@@ -1979,6 +2028,13 @@ export class Sheet {
       };
       this.choices.push(record);
       if (!applicable) continue;
+      // Picks kept but not active while `activeWhen` fails, or under an inactive pick: their own
+      // choices are still walked, inactive too.
+      const inactive =
+        dormant ||
+        (choice.activeWhen !== undefined &&
+          !this.condition(choice.activeWhen, pack, roots, `${owner.sourceId} choice ${choice.id}`));
+      if (inactive) record.inactive = true;
       for (const [at, pick] of picks.entries()) {
         const nestedPresets = preset?.[at]?.nested;
         const own = {
@@ -1990,16 +2046,17 @@ export class Sheet {
           grantDefaults: undefined,
         };
         const pickRoot = { pick: { id: pick.option, value: pick.option } };
-        (choice.effects ?? []).forEach((effect, index) => {
-          this.instance(
-            effect,
-            pack,
-            { ...roots, ...pickRoot },
-            owner.source,
-            `${owner.sourceId}/${choice.id}`,
-            `${pick.option}/${effect.id ?? index}`,
-          );
-        });
+        if (!inactive)
+          (choice.effects ?? []).forEach((effect, index) => {
+            this.instance(
+              effect,
+              pack,
+              { ...roots, ...pickRoot },
+              owner.source,
+              `${owner.sourceId}/${choice.id}`,
+              `${pick.option}/${effect.id ?? index}`,
+            );
+          });
         const nested: Pick['choices'] = pick.choices ?? {};
         const pickPath: ChoicePath = { ...owner.path, choice: [...path.choice, pick.option] };
         const from = choice.from;
@@ -2029,9 +2086,11 @@ export class Sheet {
               ...own,
             },
             depth + 1,
+            inactive,
           );
         } else if (
           choice.activate !== false &&
+          choice.addAs === undefined &&
           typeof pick.option === 'string' &&
           this.ruleset.content[pick.option]
         ) {
@@ -2071,8 +2130,8 @@ export class Sheet {
               keyPrefix: '',
               ...own,
             },
-
             depth + 1,
+            inactive,
           );
         }
       }
@@ -2645,6 +2704,7 @@ export class Sheet {
           picks: record.picks.map((pick) => pick.option),
           open: isOpen(record, min),
           ...(record.preset ? { preset: true as const } : {}),
+          ...(record.inactive ? { inactive: true as const } : {}),
         };
       });
   }
@@ -2737,7 +2797,11 @@ export class Sheet {
           else if (!this.valueEligible(record, pick.option)) notEligible(pick.option);
         }
       }
-      if (choice.activate === false && !('values' in from) && !('options' in from)) {
+      if (
+        (choice.activate === false || record.inactive === true) &&
+        !('values' in from) &&
+        !('options' in from)
+      ) {
         // Picks that aren't activated are still reported when hidden.
         for (const pick of picks) {
           const item =
@@ -2775,7 +2839,7 @@ export class Sheet {
           if (!matches.has(pick.option)) notEligible(pick.option);
         }
       }
-      if (choice.eligible !== undefined && !('options' in from))
+      if ((choice.eligible !== undefined || choice.addAs === 'copy') && !('options' in from))
         for (const pick of picks)
           if (!this.optionEligible(record, pick.option)) notEligible(pick.option);
     }
@@ -2837,6 +2901,13 @@ export class Sheet {
   /** `item` is the content option's item, `value` the value; a failing condition doesn't hold. */
   optionEligible(record: ChoiceRecord, option: string | number): boolean {
     const choice = record.choice;
+    // A pick held as a copy must be content a copy can be added of.
+    if (
+      choice.addAs === 'copy' &&
+      typeof option === 'string' &&
+      this.ruleset.content[option]?.grantOnly === true
+    )
+      return false;
     if (choice.eligible === undefined) return true;
     const pack = (choice as Choice & { pack?: string }).pack ?? record.owner.pack;
     const roots = this.ownRoots(record);
@@ -2870,6 +2941,62 @@ export class Sheet {
     if (record.choice.uniqueScope !== 'owner') return key;
     const { owner } = record;
     return `${key} ${JSON.stringify([owner.path, owner.keyPrefix ?? ''])}`;
+  }
+
+  private links?: { held: Map<string, ChoicePath>; issues: OwnedIssue[] };
+
+  /**
+   * The copies picks of `addAs: copy` choices hold, by instance ID, with the choice path of the
+   * choice each was picked in. Only a link to an entry of the picked item, not named by an
+   * earlier pick, holds; every other saved link, and a pick of such a choice without one, is
+   * `picked-copy-invalid`.
+   */
+  pickedCopies(): Map<string, ChoicePath> {
+    return this.copyLinks().held;
+  }
+
+  private copyLinks(): { held: Map<string, ChoicePath>; issues: OwnedIssue[] } {
+    if (this.links) return this.links;
+    const held = new Map<string, ChoicePath>();
+    const issues: OwnedIssue[] = [];
+    const entries = new Map(
+      [...(this.character.features ?? []), ...(this.character.inventory ?? [])].map((e) => [
+        e.id,
+        e,
+      ]),
+    );
+    for (const record of this.choices) {
+      const asCopies = record.choice.addAs === 'copy';
+      for (const pick of record.picks) {
+        if (!asCopies && pick.entry === undefined) continue;
+        const problem = !asCopies
+          ? 'not-held-as-copy'
+          : pick.entry === undefined || !entries.has(pick.entry)
+            ? 'missing'
+            : entries.get(pick.entry)?.item !== pick.option
+              ? 'other-item'
+              : held.has(pick.entry)
+                ? 'shared'
+                : undefined;
+        if (problem === undefined) held.set(pick.entry as string, record.path);
+        else
+          issues.push({
+            owner: record.owner,
+            issue: {
+              code: 'picked-copy-invalid',
+              id: choiceId(record.owner, record.choice),
+              source: record.owner.source,
+              data: {
+                option: pick.option,
+                path: record.path,
+                problem,
+                ...(pick.entry === undefined ? {} : { entry: pick.entry }),
+              },
+            },
+          });
+      }
+    }
+    return (this.links = { held, issues });
   }
 
   private alreadyPicked(): OwnedIssue[] {
@@ -3063,7 +3190,12 @@ export class Sheet {
         });
     }
     for (const issue of this.tooManyCopies()) owned.push({ owner: rules, issue });
-    owned.push(...this.pending().issues, ...this.alreadyPicked(), ...this.immune);
+    owned.push(
+      ...this.pending().issues,
+      ...this.alreadyPicked(),
+      ...this.copyLinks().issues,
+      ...this.immune,
+    );
     const position = new Map(this.activations.map((a, i) => [a, i]));
     const rank = (o: OwnedIssue) => issueOrder.indexOf(o.issue.code);
     const sorted = owned.toSorted(
