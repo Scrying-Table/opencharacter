@@ -186,7 +186,7 @@
     {
       "id": "formula-error",
       "kind": "load",
-      "description": "A formula in a pack does not parse or type-check (load-time wrapper; the cause is one of the formula codes). computeSheet also reports a computed value on a copy whose formula fails (data: `entry`, `name`, `cause`)."
+      "description": "A formula in a pack does not parse or type-check (load-time wrapper; the cause is one of the formula codes). computeSheet also reports a computed value whose formula fails (data: `entry` on a copy, or `activation`, its index in `activations`, on picked or granted content; `name`, `cause`)."
     },
     {
       "id": "unknown-tally",
@@ -201,7 +201,7 @@
     {
       "id": "template-without-copy",
       "kind": "load",
-      "description": "A `keepsTemplates` entry keeps a template on content (`content`), which has no copy, and the template gives more than fields and tags: state, computed values, effects, actions, choices, grants or anything else a copy carries. Data: `item` (the keeping item), `template`, `keys` (what it gives), `pack`."
+      "description": "A `keepsTemplates` entry keeps a template on content (`content`), which has no copy, and the template gives more than fields, tags and computed values: state, effects, actions, choices, grants or anything else a copy carries. Data: `item` (the keeping item), `template`, `keys` (what it gives), `pack`."
     },
     {
       "id": "link-field-mismatch",
@@ -232,6 +232,11 @@
       "id": "invalid-item-field",
       "kind": "load",
       "description": "A content item's `fields` don't match its content type: a required field is missing (after `extends`), a name the type doesn't declare, or a value of the wrong shape (a list for a number, boolean or dice field; not a string for a `string` or `id` field; not one of an enum's values; not a list for a `set` field). A member outside the field's `where` is `not-allowed`. Data: `item`, `field`, `reason` (`missing`, `undeclared`, `wrong-type` or `not-allowed`), `pack`; `path` points to the field."
+    },
+    {
+      "id": "invalid-stacking",
+      "kind": "load",
+      "description": "A stack key spanning fields (`settings.stacking.keys`) scores by a field (`score: { field }`) that none of the key's effects targets. Data: `key`, `field` (qualified), `pack` (the pack declaring the key)."
     },
     {
       "id": "template-field-mismatch",

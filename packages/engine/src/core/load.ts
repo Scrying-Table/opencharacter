@@ -67,7 +67,6 @@ const MAX_EXTENDS = 16;
 /** What a template gives only on a copy, so it can't be kept on content without one. */
 const COPY_ONLY = [
   'state',
-  'computed',
   'effects',
   'followUps',
   'actions',
@@ -273,6 +272,7 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
 
   // 2. Merge the rules. Names first, so references can resolve across packs.
   const tags = new Set<string>();
+  const spanPacks = new Map<string, string>();
   for (const pack of byId.values()) {
     const pid = pack.manifest.id;
     const r = pack.rules;
@@ -303,6 +303,8 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
       ruleset.rules.tallies[`${pid}:${name}`] = { name, pack: pid };
     for (const [id, set] of Object.entries(r.resultBands ?? {}))
       ruleset.rules.bands[`${pid}:${id}`] = { ...bandSet(set), pack: pid };
+    // A spanning key's score field resolves in the pack that declared the key.
+    for (const key of Object.keys(r.settings?.stacking?.keys ?? {})) spanPacks.set(key, pid);
     for (const [key, value] of Object.entries(r.settings ?? {})) {
       const settings = ruleset.rules.settings as Record<string, unknown>;
       if (key in settings)
@@ -805,6 +807,16 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
         : {}),
     };
   }
+  const stacking = ruleset.rules.settings.stacking;
+  if (stacking?.keys)
+    stacking.keys = Object.fromEntries(
+      Object.entries(stacking.keys).map(([key, decl]) => [
+        key,
+        typeof decl === 'object' && typeof decl.score === 'object'
+          ? { ...decl, score: { field: q.field(decl.score.field, spanPacks.get(key) as string) } }
+          : decl,
+      ]),
+    );
   // A link slot's fields are checked against its pack only when that pack is loaded too.
   for (const [qid, link] of Object.entries(ruleset.rules.links)) {
     if (link.expects === undefined || !byId.has(link.expects)) continue;
@@ -1155,13 +1167,27 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
       if ('type' in choice.from) queries.push({ query: choice.from, pack });
       if ('options' in choice.from)
         for (const o of choice.from.options) {
+          recordKeys(o.effects);
           collectChoices(o.choices, pack);
           collectGrants(o.grants, pack);
         }
       collectEffects(choice.effects, pack);
     }
   };
+  // The fields each stack key's effects target, for a spanning key's score field; a key with
+  // a computed target (a set of fields, a formula) may reach any.
+  const keyTargets = new Map<string, Set<string>>();
+  const keyAnywhere = new Set<string>();
+  const recordKeys = (effects: Effect[] | undefined) => {
+    for (const e of effects ?? []) {
+      if (e.stackKey === undefined) continue;
+      if (typeof e.target === 'string')
+        keyTargets.set(e.stackKey, (keyTargets.get(e.stackKey) ?? new Set()).add(e.target));
+      else if ('fields' in e.target || 'formula' in e.target) keyAnywhere.add(e.stackKey);
+    }
+  };
   const collectEffects = (effects: Effect[] | undefined, pack: string) => {
+    recordKeys(effects);
     for (const e of effects ?? []) {
       const v = e.value as GrantValue | undefined;
       if (e.op === 'grant' && v?.query) queries.push({ query: v.query, pack });
@@ -1172,7 +1198,10 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
       if (typeof g.item === 'object' && 'query' in g.item)
         queries.push({ query: g.item.query, pack });
   };
-  for (const type of Object.values(ruleset.contentTypes)) collectGrants(type.grants, type.pack);
+  for (const type of Object.values(ruleset.contentTypes)) {
+    collectGrants(type.grants, type.pack);
+    recordKeys(type.effects);
+  }
   for (const item of Object.values(ruleset.content)) {
     const pack = item.pack;
     collectGrants(item.grants, item.scopes?.grants ?? pack);
@@ -1189,8 +1218,19 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
   for (const choice of Object.values(ruleset.rules.choices)) collectChoices([choice], choice.pack);
   collectEffects(ruleset.rules.effects, '');
   for (const e of ruleset.rules.effects) collectEffects([e], e.pack);
+  for (const s of Object.values(ruleset.rules.situational)) recordKeys(s.effects);
   for (const g of ruleset.rules.display.groups)
     if (g.members && g.kind !== 'actions') queries.push({ query: g.members, pack: g.pack });
+  // A spanning key's score field (one that exists) must be one its effects target.
+  for (const [key, decl] of Object.entries(ruleset.rules.settings.stacking?.keys ?? {}))
+    if (
+      typeof decl === 'object' &&
+      typeof decl.score === 'object' &&
+      ruleset.fields[decl.score.field] &&
+      !keyAnywhere.has(key) &&
+      !keyTargets.get(key)?.has(decl.score.field)
+    )
+      err('invalid-stacking', { key, field: decl.score.field, pack: spanPacks.get(key) });
 
   // Each condition is parsed once, and each item's view built once for every query.
   const visibleByType = new Map<string, LoadedItem[]>();

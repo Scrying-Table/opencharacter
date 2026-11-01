@@ -2041,6 +2041,11 @@ export type ComputeSheetOutput = {
   }[];
   /** Computed values on copies, by instance ID: for each copy that has any, `{ <name>: value }`. A value whose formula fails is left out, with a `formula-error` in `errors`. */
   copies?: Record<string, Record<string, Literal>>;
+  /** Computed values of content without a copy: each holder activation of picked or granted content whose item, content type or kept templates declare any, in activation order, as `{ activation, values }` (`activation` its index in `activations`, `values` `{ <name>: value }`). A value whose formula fails is left out, with a `formula-error` in `errors`. */
+  activationValues?: {
+    activation: number;
+    values: Record<string, Literal>;
+  }[];
   /** Copies named by their state, by instance ID: for each copy whose item or content type has `nameFrom`, the value of that state key when it is a non-empty string. Apps show it as the copy's name in place of the item's (a choice's copy options included). */
   copyNames?: Record<string, string>;
   /** Every item the character has with templates, as merged, so an app shows the item as the rules read it: each copy with a saved or kept template or its own field values (`perCopy` fields), in instance order (`entry` its instance ID), then each activation of content without a copy (picked or granted) that content keeps templates on, in activation order (`activation` its index in `activations`, no `entry`): the same item reached twice is listed per activation, each with its own templates. `templates` lists the templates in the order they apply, `tags` and `fields` are the merged item's (`item.tags` and each item field as `item` reads it; a dice field as canonical dice text). */
@@ -2189,14 +2194,20 @@ export type ListedChoice = {
 };
 
 export type CompetingOptions = {
+  /** The field the group is on; for a group spanning fields, the first of `fields`. */
   field: string;
+  /** For a group of a stack key spanning fields: every field it reaches, in ruleset order. Absent otherwise. */
+  fields?: string[];
   /** The group's op: `set` for competing `set` effects, or the op of a `playerChooses` stacking group. */
   op: 'set' | 'add' | 'multiply' | 'atLeast' | 'atMost';
   /** For a `playerChooses` stacking group, its stack key as written (`source` for the reserved key). Absent for competing `set` effects. */
   stackKey?: string;
   options: {
     id: string;
+    /** The option's value; for a group spanning fields, the source's score. */
     value: Literal;
+    /** For a group spanning fields: the source's value on each field it reaches, by field ID. */
+    values?: Record<string, Literal>;
     source: Source;
   }[];
   recommended: string;
@@ -2948,8 +2959,8 @@ export type Settings = {
   stacking?: {
     /** Policy for effects sharing a stack key that has no specific policy. Default `addAll`. */
     default?: StackingPolicy;
-    /** Policy per stack key (`source`, `item`, `status`, …). */
-    keys?: Record<string, StackingPolicy>;
+    /** Policy per stack key (`source`, `item`, `status`, …): a policy, or a key spanning fields (`{ policy, spansFields: true, score? }`). */
+    keys?: Record<string, StackingPolicy | SpanningKey>;
   };
   competing?: {
     recommend?: RecommendPolicy;
@@ -2964,6 +2975,19 @@ export type Settings = {
 
 /** Kept in sync with `data/stacking-policies.json`. */
 export type StackingPolicy = 'addAll' | 'highestOnly' | 'lowestOnly' | 'playerChooses';
+
+/** A stack key whose group spans every field its effects target: one source counts on all of them (a kit's melee damage bonus across three tiers). The group is the key's effects of one op on every field; the policy keeps one source, by its score, and that source's effects count on every field while the others' are suppressed. `playerChooses` reports the group once as competing, one option per source. */
+export type SpanningKey = {
+  /** `highestOnly` keeps the source with the highest score, `lowestOnly` the lowest; `playerChooses` reports the sources as competing options and recommends the highest. */
+  policy: 'highestOnly' | 'lowestOnly' | 'playerChooses';
+  spansFields: true;
+  /** A source's score: `sum` (the default), its values on every field added up, or `{ field }`, its value on that one field (0 where it has none). Dice count by their average. */
+  score?:
+    | 'sum'
+    | {
+        field: FieldRef;
+      };
+};
 
 export type LinkSlot = {
   /** The pack the linked character is expected to use. Optional, and not a dependency: any character whose view has the declared fields may fill the slot. When this pack is loaded alongside, loadRuleset and the build check each declared field against it (`link-field-mismatch`); the engine never checks the linked character's packs. */
@@ -3134,6 +3158,7 @@ export type ErrorCode =
   | 'invalid-extension'
   | 'link-start-mismatch'
   | 'invalid-item-field'
+  | 'invalid-stacking'
   | 'template-field-mismatch'
   | 'unknown-role'
   | 'circular-extends'

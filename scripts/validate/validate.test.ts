@@ -344,6 +344,10 @@ describe('pnpm validate', () => {
       ],
       ['a block that does not parse', /"weapons.mace.block": the block doesn't parse as ICU/],
       [
+        "a named text's argument its type doesn't give",
+        /"weapons.mace.texts.inscription": the text's argument \{self_bogus\} is nothing its type gives/,
+      ],
+      [
         'a tag test naming no declared tag',
         /"types.weapon.block": the block's argument \{tag_nope\} is nothing its type gives/,
       ],
@@ -372,6 +376,12 @@ describe('pnpm validate', () => {
     it('accepts a headline naming fields, types and links', () => {
       expect(messages.filter((m) => m.startsWith('"headline"'))).toHaveLength(3);
       expect(reporter.warnings.map((w) => w.message)).not.toContain(unused('headline.separator'));
+    });
+
+    it("accepts a named text naming its state and a template's computed value", () => {
+      const text = messages.filter((m) => m.includes('"weapons.mace.texts.inscription"'));
+      expect(text).toHaveLength(1);
+      expect(text[0]).toMatch(/\{self_bogus\}/);
     });
 
     it('accepts a block naming fields, texts and state', () => {

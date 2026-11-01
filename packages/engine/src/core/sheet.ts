@@ -28,7 +28,7 @@ import type {
   Query,
 } from './pack-types.ts';
 import type { GrantStore } from '@opencharacter/spec';
-import { appliesQueries } from './pack-types.ts';
+import { appliesQueries, stackPolicy, type SpanningKey } from './pack-types.ts';
 import { openOptionsOn } from './options.ts';
 import { isContentOnly } from './load.ts';
 import {
@@ -52,6 +52,7 @@ import {
   characterQueries,
   computedDecls,
   computedRoot,
+  type ComputedSource,
   copyFieldProblem,
   copyFields,
   copyRoots,
@@ -2582,10 +2583,17 @@ export class Sheet {
       const group = `${key === 'source' ? instance.sourceId : key}`;
       groups.set(group, [...(groups.get(group) ?? []), instance]);
     }
-    const settings = this.ruleset.rules.settings.stacking;
     for (const [, group] of groups) {
       const key = group[0]?.effect.stackKey as string;
-      const policy = settings?.keys?.[key] ?? settings?.default ?? 'addAll';
+      const { policy, span } = stackPolicy(this.ruleset.rules.settings, key);
+      // A key spanning fields keeps its chosen source's effects here, whatever this field holds.
+      if (span && report) {
+        const chosen = this.spanChoice(key, group[0]?.effect.op as string, span);
+        for (const i of group)
+          if (spanSource(i) === chosen) out.push(i);
+          else this.suppressed.add(i);
+        continue;
+      }
       if (policy === 'addAll' || group.length === 1) {
         out.push(...group);
         continue;
@@ -2617,6 +2625,99 @@ export class Sheet {
       if (report) for (const i of group) if (i !== chosen) this.suppressed.add(i);
     }
     return out.toSorted((a, b) => a.order - b.order);
+  }
+
+  /** Each decided group's source, or the Failure that kept it from being decided. */
+  private readonly spans = new Map<string, string | undefined | Failure>();
+  private readonly spanning = new Set<string>();
+
+  /**
+   * The source whose effects count for a stack key spanning fields, for one op: each source's
+   * active effects of the key on every field, scored, the best kept or, for `playerChooses`, the
+   * player's pick, reported once as competing. Throws Failure when a member fails, or reads a
+   * field the group reaches while it is being decided. A group that failed fails the same way on
+   * every field, decided once.
+   */
+  private spanChoice(key: string, op: string, span: SpanningKey): string | undefined {
+    const id = `${key}\u0000${op}`;
+    if (this.spans.has(id)) {
+      const known = this.spans.get(id);
+      if (known instanceof Failure) throw known;
+      return known;
+    }
+    if (this.spanning.has(id))
+      throw new Failure({
+        code: 'circular-formula',
+        message: `the stack key "${key}" spans fields its own effects read`,
+        data: { fields: [...this.stack] },
+      });
+    this.spanning.add(id);
+    try {
+      type Option = { first: EffectInstance; values: Map<string, f.Value> };
+      const options = new Map<string, Option>();
+      const fields: string[] = [];
+      const member = (i: EffectInstance) => i.effect.op === op && i.effect.stackKey === key;
+      for (const qid of Object.keys(this.ruleset.fields)) {
+        // Only the fields the key's effects target: another field's can't fail the group.
+        if (!this.byField.get(qid)?.some(member)) continue;
+        for (const i of this.instancesOn(qid)) {
+          const e = i.effect;
+          if (e.op !== op || e.stackKey !== key || !this.test(e.when, i.pack, i.roots)) continue;
+          const value = this.evaluate(e.value as Formula, i.pack, i.roots);
+          let option = options.get(spanSource(i));
+          if (!option) options.set(spanSource(i), (option = { first: i, values: new Map() }));
+          else if (i.order < option.first.order) option.first = i;
+          const had = option.values.get(qid);
+          option.values.set(qid, had ? addValues(had, value) : value);
+          if (!fields.includes(qid)) fields.push(qid);
+        }
+      }
+      const zero: f.Value = { kind: 'int', value: 0 };
+      const scored = [...options.values()]
+        .toSorted((a, b) => a.first.order - b.first.order)
+        .map((o) => {
+          const score =
+            typeof span.score === 'object'
+              ? (o.values.get(span.score.field) ?? zero)
+              : [...o.values.values()].reduce((sum, v) => addValues(sum, v), zero);
+          return { ...o, score, v: average(score) };
+        });
+      let best = scored[0];
+      for (const c of scored)
+        if (best && (span.policy === 'lowestOnly' ? c.v < best.v : c.v > best.v)) best = c;
+      let chosen = best;
+      if (span.policy === 'playerChooses' && best && scored.length > 1) {
+        chosen = scored.find((c) => this.picks.has(c.first.optionId)) ?? best;
+        const ordered = fields; // ruleset order
+        this.competing.push({
+          field: ordered[0] as string,
+          fields: ordered,
+          op: op as CompetingOptions['op'],
+          stackKey: key,
+          options: scored.map((c) => ({
+            id: c.first.optionId,
+            value: literal(c.score),
+            values: Object.fromEntries(
+              ordered.flatMap((qid) => {
+                const v = c.values.get(qid);
+                return v ? [[qid, literal(v)]] : [];
+              }),
+            ),
+            source: c.first.source,
+          })),
+          recommended: best.first.optionId,
+          applied: (chosen as typeof best).first.optionId,
+        });
+      }
+      const out = chosen && spanSource(chosen.first);
+      this.spans.set(id, out);
+      return out;
+    } catch (error) {
+      if (error instanceof Failure) this.spans.set(id, error);
+      throw error;
+    } finally {
+      this.spanning.delete(id);
+    }
   }
 
   // --- Output -------------------------------------------------------------------------------
@@ -3377,9 +3478,10 @@ export class Sheet {
     return out;
   }
 
-  // --- Computed values on copies -------------------------------------------------------------
+  // --- Computed values on copies and content -------------------------------------------------
 
   private readonly computedCache = new Map<string, Record<string, f.Value>>();
+  private readonly contentComputed = new Map<Activation, Record<string, f.Value>>();
 
   /**
    * Each declared formula sees the copy's `item`, `self` (with the values declared before it),
@@ -3398,18 +3500,64 @@ export class Sheet {
       .filter((t): t is LoadedItem => t?.type === 'template');
     const out: Record<string, f.Value> = {};
     this.computedCache.set(entryId, out);
-    for (const { name, decl, pack } of computedDecls(this.ruleset, a.item, templates)) {
+    this.evaluateComputed(
+      out,
+      computedDecls(this.ruleset, a.item, templates),
+      {
+        item: a.roots.item,
+        self: a.roots.self,
+        [f.OWNER_PICKS]: a.roots[f.OWNER_PICKS],
+        [f.OWNER_GRANTED]: a.roots[f.OWNER_GRANTED],
+      },
+      { entry: entryId },
+    );
+    return out;
+  }
+
+  /** Whether the activation is picked or granted content held without a copy of its own. */
+  private isHeldContent(a: Activation): boolean {
+    return (a.kind === 'pick' || a.kind === 'grant') && a.scope === 'holder' && !!a.item;
+  }
+
+  /**
+   * Computed values of picked or granted content: its type's, its item's and its kept templates',
+   * each seeing the activation's roots, whose `self` is the owning copy (with the copy's computed
+   * values) and the values declared before it. Empty for any other activation.
+   */
+  contentComputedOf(a: Activation): Record<string, f.Value> {
+    const cached = this.contentComputed.get(a);
+    if (cached) return cached;
+    const out: Record<string, f.Value> = {};
+    this.contentComputed.set(a, out);
+    if (!this.isHeldContent(a)) return out;
+    const item = a.item as LoadedItem;
+    const templates = a.key === undefined ? [] : this.contentTemplates(a.key, item);
+    const decls = computedDecls(this.ruleset, item, templates);
+    if (decls.length === 0) return out;
+    const owner = a.entry ? (this.computedOf(a.entry.id) ?? {}) : {};
+    this.evaluateComputed(
+      out,
+      decls,
+      { ...a.roots, self: { ...(a.roots.self as object), ...computedRoots(owner) } },
+      { activation: this.listedActivations().indexOf(a) },
+    );
+    return out;
+  }
+
+  /** Fills `out` in declaration order; `self` gains each value as it is worked out. */
+  private evaluateComputed(
+    out: Record<string, f.Value>,
+    decls: ComputedSource[],
+    roots: Record<string, unknown>,
+    data: Record<string, unknown>,
+  ): void {
+    for (const { name, decl, pack } of decls) {
       const fail = (cause: string, message: string) =>
-        this.errors.push({ code: 'formula-error', data: { entry: entryId, name, cause, message } });
+        this.errors.push({ code: 'formula-error', data: { ...data, name, cause, message } });
       try {
-        const earlier = Object.fromEntries(
-          Object.entries(out).map(([n, v]) => [n, computedRoot(v)]),
-        );
         const value = this.evaluate(decl.formula, pack, {
-          item: a.roots.item,
-          self: { ...(a.roots.self as Record<string, unknown>), ...earlier },
-          [f.OWNER_PICKS]: a.roots[f.OWNER_PICKS],
-          [f.OWNER_GRANTED]: a.roots[f.OWNER_GRANTED],
+          ...roots,
+          self: { ...(roots.self as object), ...computedRoots(out) },
         });
         const typed = computedValue(decl.type, value);
         if (typed) out[name] = typed;
@@ -3419,7 +3567,6 @@ export class Sheet {
         fail(error.error.code, error.error.message);
       }
     }
-    return out;
   }
 
   /** The activations `activationList` lists, in its order. */
@@ -3493,6 +3640,20 @@ export class Sheet {
       out[a.entry.id] = Object.fromEntries(
         Object.entries(values).map(([name, v]) => [name, literal(v)]),
       );
+    }
+    return out;
+  }
+
+  /** Computed values of picked and granted content, by index in `activations`. */
+  activationValues(): { activation: number; values: Record<string, Literal> }[] {
+    const out: { activation: number; values: Record<string, Literal> }[] = [];
+    for (const [activation, a] of this.listedActivations().entries()) {
+      const values = this.contentComputedOf(a);
+      if (Object.keys(values).length === 0) continue;
+      out.push({
+        activation,
+        values: Object.fromEntries(Object.entries(values).map(([name, v]) => [name, literal(v)])),
+      });
     }
     return out;
   }
@@ -3634,17 +3795,22 @@ export class Sheet {
     return (this.activations[0] as Activation).roots;
   }
 
-  /** A holder activation's roots, with `self` also holding its copy's computed values. */
+  /**
+   * A holder activation's roots, with `self` also holding its copy's computed values, then, for
+   * picked or granted content, its own.
+   */
   actionRoots(a: Activation): Record<string, unknown> {
     const self = a.roots.self as Record<string, unknown> | undefined;
-    if (!self || !a.entry) return a.roots;
-    const computed = this.computedOf(a.entry.id) ?? {};
-    if (Object.keys(computed).length === 0) return a.roots;
-    const extra = Object.fromEntries(
-      Object.entries(computed).map(([name, v]) => [name, computedRoot(v)]),
-    );
-    return { ...a.roots, self: { ...self, ...extra } };
+    const copy = self && a.entry ? (this.computedOf(a.entry.id) ?? {}) : {};
+    const own = this.contentComputedOf(a);
+    if (Object.keys(copy).length === 0 && Object.keys(own).length === 0) return a.roots;
+    return { ...a.roots, self: { ...self, ...computedRoots(copy), ...computedRoots(own) } };
   }
+}
+
+/** A source of a spanning group: the content and where it was reached (two copies are two). */
+function spanSource(i: EffectInstance): string {
+  return `${i.sourceId}\u0000${JSON.stringify(i.source)}`;
 }
 
 export function entryOf(a: Activation): string | undefined {
@@ -3654,6 +3820,10 @@ export function entryOf(a: Activation): string | undefined {
 /** Whether the activation is its entry's own item: a copy's, or an applied entry's source. */
 export function ownsEntry(a: Activation): boolean {
   return a.kind === 'feature' || a.kind === 'inventory' || a.kind === 'applied';
+}
+
+function computedRoots(values: Record<string, f.Value>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).map(([name, v]) => [name, computedRoot(v)]));
 }
 
 function computedValue(type: string, value: f.Value): f.Value | undefined {

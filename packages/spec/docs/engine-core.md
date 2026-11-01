@@ -170,8 +170,8 @@ A state key with no saved value and no default is absent (`has(self.key)` is fal
 In the copy's own actions (their `available` and steps, for actions defined on its content type
 or item and the rules actions they `use`) and in its follow-ups, `self` also has the copy's
 [computed values](#computed-values) as `self.<name>`. Content picked or granted
-on the copy sees the copy's computed values there too, since its `self` is that copy. A roll
-effect's `roll.self` doesn't have them.
+on the copy sees the copy's computed values there too, since its `self` is that copy, and its
+own computed values over them by name. A roll effect's `roll.self` doesn't have them.
 
 The copy's picks aren't on `self`: a formula reads its owner's choices with
 [`picksOf`](formulas.md#picks-of-the-owners-choices), a copy's item reading the entry's bare
@@ -529,6 +529,39 @@ group is reduced by the policy for its key (`settings.stacking.keys`, else
 Instances that don't count are listed in `effects` with `suppressed: true`. Instances without a
 `stackKey` always count.
 
+**Keys spanning fields.** A key declared `{ policy, spansFields: true, score? }` groups its
+instances of one op on **every** field instead of per field, and keeps a source rather than an
+instance: a kit's melee bonus on three tiers is one bonus, so of two kits one kit's counts on all
+three. The reserved key `source` never spans.
+
+1. **Gather:** every active instance (its `when` holding) with the key and the op, on every field
+   in ruleset order. A source is the content the instance comes from where it was reached (its
+   `source`: two copies of an item are two sources). Each source's value on a field is the sum
+   of its instances there.
+2. **Score:** `sum` (the default) adds the source's values on every field; `{ field }` takes its
+   value on that field, 0 where it has none. Dice count by average.
+3. **Keep:** `highestOnly` keeps the highest score, `lowestOnly` the lowest, ties going to the
+   source whose first instance comes first. `playerChooses` recommends the highest and, with two
+   sources or more, is one `competing` entry: `field` the first of `fields`, every field the
+   group reaches in ruleset order, its `op` and `stackKey`, and one option per source, its `id`
+   the option ID of the source's first instance (in instance order), `value` its score and
+   `values` its value per field. It applies the first option whose `id` the input lists, else the
+   recommended one.
+4. **Apply:** on each field, the kept source's instances of the group count and every other
+   source's are suppressed, whatever that field holds alone.
+
+The group is per op: a key with `add` and `multiply` instances is two groups, each decided and
+reported on its own. Only the fields its instances of that op target are read, so another
+field failing (its computed tags, say) doesn't fail the group. A `score` field none of the key's
+instances targets is `invalid-stacking` at load.
+
+The group is decided once per sheet, when the first of its fields is computed, so evaluating its
+instances must not read a field the group reaches: that is `circular-formula` on the field
+being computed. A group that fails (a `when` or value that fails, or that loop) is decided once
+too: each of its fields fails with that error. A roll carries a field's counted instances as
+usual, and on a roll or an incoming change the key's `policy` applies per field or roll, not
+spanning.
+
 ### Pending choices and issues
 
 For each activation's choices, and the rules-level choices:
@@ -677,9 +710,21 @@ later declaration replacing an earlier one with the same name in its place.
   `formula-error` (data: `entry`, the copy's instance ID; `name`; `cause`, the formula error
   code or `type-mismatch`).
 
-`copies` maps each copy that has any computed values to `{ <name>: value }`. The same values
-are `self.<name>` in the copy's actions and follow-ups ([Copies and `self`](#copies-and-self));
-an engine may compute them on demand, with the same result.
+Then each holder activation of picked or granted content ([The activation list](#the-activation-list),
+`via: pick` or `grant`, not `scope: applied`) has its computed values worked out the same way,
+in activation order: its content type's, then its item's and each template content keeps on it,
+in the order they apply. A formula sees the activation's roots as its actions do: `item` merged
+with the kept templates, `self` the owning copy with the pick's or grant's state keys over it,
+then the copy's computed values, then the content's own declared before this one;
+`picksOf` reads the content's own choices. A failure is `formula-error` with `activation`, its
+index in `activations`, in place of `entry`.
+
+`copies` maps each copy that has any computed values to `{ <name>: value }`, and
+`activationValues` lists each such activation that has any as `{ activation, values }`, in
+activation order. The same values are `self.<name>` in the copy's (or the content's) actions and
+follow-ups ([Copies and `self`](#copies-and-self)); picked or granted content's actions see its
+owning copy's values with its own over them by name. An engine may compute them on demand, with
+the same result.
 
 `copyNames` maps each copy whose item or content type has `nameFrom`
 ([content.md](content.md#per-copy-state)) to the value of that state key, when it is a

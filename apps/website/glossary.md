@@ -19,8 +19,8 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Checkpoint policy:** the app's rules for which checkpoints continue automatically and which pause.
 - **Choice:** a decision declared in content or rules: options, how many to pick, and when it applies. A value choice's options may come from a formula and be filtered by `where` (`value`); a content choice with `activate: false` picks references, not active content; one with `activeWhen` keeps its picks inactive while the condition fails; one with `addAs: copy` holds each pick as a copy added and removed with it.
 - **Choice path:** the address of a choice: an optional entry, then alternating choice IDs and picked options.
-- **Competing options:** several active `set` effects on one field, or the effects of a `playerChooses` stacking group; the engine reports them and the recommended one, and the app picks.
-- **Computed value:** a value worked out for each copy of an item from the character (a FitD cohort's quality), declared by its content type, item or templates, never saved; computeSheet returns it in `copies` and the copy's actions and follow-ups read it as `self.<name>`.
+- **Competing options:** several active `set` effects on one field, or the effects of a `playerChooses` stacking group (one group across every field for a key spanning fields, an option per source); the engine reports them and the recommended one, and the app picks.
+- **Computed value:** a value worked out from the character for each copy of an item (a FitD cohort's quality), or for picked or granted content (a Draw Steel ability's damage), declared by its content type, item or templates, never saved; computeSheet returns it in `copies` or `activationValues`, its actions and follow-ups read it as `self.<name>`, and its text as `{self_<name>}`.
 - **Condition:** a formula that must evaluate to true or false (`when`, `showWhen`, `where`, prerequisites).
 - **Constraint:** a game rule in the rules data, checked against the current character, whose failure is a rules issue.
 - **Content order:** the order the engine lists content in: packs in load order, each pack's content in its release's order (file path order), homebrew last; query matches and choice options follow it, so a dependency's content comes first.
@@ -105,7 +105,7 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Spec version:** the version of the OCF formats and behavior, which is the `@opencharacter/spec` package version; packs declare the minimum they need, and an engine lists the major.minor versions it implements (`IMPLEMENTS_SPEC`).
 - **Split (typed damage):** a proposed adjust split into one change per tag group of a roll's items, so resistances apply per damage type.
 - **Stacking key:** a label on an effect grouping it with others for the stacking policy; `source` means the effect's content item.
-- **Stacking policy:** how effects sharing a stacking key combine: addAll, highestOnly, lowestOnly, playerChooses.
+- **Stacking policy:** how effects sharing a stacking key combine: addAll, highestOnly, lowestOnly, playerChooses. A key may span fields, so one source counts on all of them (a kit's bonus across tiers).
 - **Standard copy:** a copy every character holds without the file listing it (FitD gear a table tags `standard`, the ritual the Ritual ability starts with), declared by the rules or an active item as `standardCopies`; its ID is derived from its item, and the file saves it only once it differs from its defaults.
 - **Strict mode:** an applyChanges option that turns rules issues into a runtime error.
 - **Tag:** a dotted label on content, fields or rolls (`damage.fire`); matches itself and every tag below it.

@@ -79,6 +79,7 @@ const expectedKeys: Record<string, string[]> = {
     'competing',
     'valueErrors',
     'copies',
+    'activationValues',
     'copyNames',
     'templated',
     'standardCopies',
@@ -278,6 +279,8 @@ function run(dir: string): void {
     if (expected.actions) expect(sheet.actions).toEqual(expected.actions);
     if (expected.situational) expect(sheet.situational).toEqual(expected.situational);
     if (expected.copies) expect(sheet.copies).toEqual(expected.copies);
+    if (expected.activationValues)
+      expect(sheet.activationValues).toEqual(expected.activationValues);
     if (expected.copyNames) expect(sheet.copyNames).toEqual(expected.copyNames);
     if (expected.templated) expect(sheet.templated).toEqual(expected.templated);
     if (expected.standardCopies) expect(sheet.standardCopies).toEqual(expected.standardCopies);
@@ -295,6 +298,7 @@ function run(dir: string): void {
       ).toEqual(expected.valueErrors);
     type Competing = {
       field: string;
+      fields?: string[];
       op?: string;
       stackKey?: string;
       options?: unknown[];
@@ -309,6 +313,7 @@ function run(dir: string): void {
       want.forEach((w, i) => {
         checkKeys(`competing ${field}`, w, [
           'field',
+          'fields',
           'op',
           'stackKey',
           'options',
@@ -318,12 +323,18 @@ function run(dir: string): void {
         const g = got[i];
         if (w.op) expect(g?.op).toBe(w.op);
         if ('stackKey' in w) expect(g?.stackKey).toBe(w.stackKey);
-        // Options are option IDs, or `{ id, value }` to check the values too.
+        if (w.fields) expect(g?.fields).toEqual(w.fields);
+        // Options are option IDs, or `{ id, value }` to check the values too, and `values` for a
+        // group spanning fields.
         if (w.options)
           expect(
-            g?.options.map((o, j) =>
-              typeof w.options?.[j] === 'string' ? o.id : { id: o.id, value: o.value },
-            ),
+            g?.options.map((o, j) => {
+              const option = w.options?.[j];
+              if (typeof option === 'string') return o.id;
+              return option && typeof option === 'object' && 'values' in option
+                ? { id: o.id, value: o.value, values: o.values }
+                : { id: o.id, value: o.value };
+            }),
           ).toEqual(w.options);
         if (w.recommended) expect(g?.recommended).toBe(w.recommended);
         if (w.applied) expect(g?.applied).toBe(w.applied);
