@@ -25,6 +25,7 @@ import {
   fieldKey,
   fieldValueKey,
   inlineOptionKey,
+  issueChoicePromptKeys,
   issueKey,
   packKey,
   prerequisiteOwner,
@@ -264,7 +265,9 @@ export interface Text {
   issue(issue: RulesIssue | EngineError): string;
   /**
    * The spec's text, by the variant its data picks (`errors.out-of-range.min`,
-   * `errors.out-of-range.exact`, `errors.wrong-type.values`, `errors.safety-limit-exceeded.<limit>`); a code without text, or whose text misses an
+   * `errors.out-of-range.exact`, `errors.wrong-type.values`, `errors.invalid-option.param`, `.field`
+   * and `.target`,
+   * `errors.safety-limit-exceeded.<limit>`); a code without text, or whose text misses an
    * argument, as its `data.message` when it has one, else `errors.other`. Neither names the code:
    * log `code` and `data` for developers.
    */
@@ -873,6 +876,33 @@ export function createText(options: TextOptions): Text {
         const found = format(findSpec('issues.too-many-copies.item'), named(data), true);
         if (found !== undefined) return found;
       }
+      if (
+        (issue.code === 'too-many-picks' || issue.code === 'choice-not-applicable') &&
+        'id' in issue &&
+        issue.id
+      ) {
+        // A rules-level choice's ID (`rules/<choice>`) has no pack: its prompt is in the one
+        // pack that declares the choice.
+        // A slot's prompt is formatted with its number; a prompt missing an argument is skipped.
+        const prompt = (k: { pack: string | null; key: string; slot?: number }) => {
+          const args = k.slot === undefined ? {} : { slot: k.slot };
+          const one = (pack: string) => format(findPack(pack, k.key), args, true);
+          return k.pack
+            ? one(k.pack)
+            : packOrder
+                .flatMap((l) => Object.keys(options.packs[l] ?? {}))
+                .map(one)
+                .find((m) => m !== undefined);
+        };
+        const choice = issueChoicePromptKeys(issue.id)
+          .map(prompt)
+          .find((m) => m !== undefined);
+        const found =
+          choice === undefined
+            ? undefined
+            : format(findSpec(`issues.${issue.code}.choice`), { ...data, choice }, true);
+        if (found !== undefined) return found;
+      }
       return standard(issue, 'issues', 'errors');
     },
     error: (error) => standard(error, 'errors', 'issues'),
@@ -890,6 +920,8 @@ function variants(code: string, data: Args): string[] {
   }
   if (code === 'wrong-type' && Array.isArray(data.values)) return ['values'];
   if (code === 'safety-limit-exceeded' && typeof data.limit === 'string') return [data.limit];
+  if (code === 'invalid-option')
+    return (['param', 'field', 'target'] as const).filter((k) => typeof data[k] === 'string');
   return [];
 }
 

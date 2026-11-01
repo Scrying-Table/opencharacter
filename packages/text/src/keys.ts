@@ -163,6 +163,28 @@ export function prerequisiteOwner(id: string):
   return { pack, root, inline: path.length > 0, ...(choice ? { choice } : {}) };
 }
 
+/**
+ * A choice issue's choice prompt keys, from its `<owner>/<choice>` ID (an inline option's choice
+ * `<item>/<choice>/<option>/<choice>`): the key as written, then a slot's declared choice's with
+ * the slot's number (a slot's prompt takes `{slot}`). A
+ * rules-level choice's (`rules/<choice>`) has pack `''`: the ID doesn't name it.
+ */
+export function issueChoicePromptKeys(id: string): (MessageRef & { slot?: number })[] {
+  const [pack, local] = split(id);
+  const parts = local.split('/');
+  if (parts.length < 2 || parts.length % 2 !== 0) return [];
+  let root = parts[0] as string;
+  for (let i = 1; i + 2 < parts.length; i += 2)
+    root += `.choices.${parts[i] as string}.options.${parts[i + 1] as string}`;
+  const choice = parts.at(-1) as string;
+  const key = (c: string) => `${root}.choices.${c}.prompt`;
+  const slot = /^(.+)-(\d+)$/.exec(choice);
+  return [
+    { pack, key: key(choice) },
+    ...(slot ? [{ pack, key: key(slot[1] as string), slot: Number(slot[2]) }] : []),
+  ];
+}
+
 /** A rules issue's own key in its pack, or `undefined` when the spec's `issues.<code>` applies. */
 export function issueKey(issue: { code: string; id?: string }): MessageRef | undefined {
   if (!issue.id) return undefined;
