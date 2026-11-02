@@ -6,7 +6,7 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Action:** something a character can do that needs dice or decisions, defined as a cascade of steps (roll, choice, allocate, branch, group, changes, action, outcome).
 - **Action log:** the record of every die face and choice in an action, and who supplied it; replaying it gives the same result.
 - **Active content:** content whose effects, grants and choices currently apply: owned features, inventory, picked options, granted content, applied effects and templates on active copies.
-- **Aggregate:** a formula macro that counts, sums or takes the highest or lowest of something over the character's copies (`countCopies`), its saved picks or active grants (`countPicks`, `countGrants`), the ruleset's fields (`countFields`) or a list (`countList`), with a root (`copy`, `pick`, `grant`, `f`, `x`) bound to each element.
+- **Aggregate:** a formula macro that counts, sums or takes the highest or lowest of something over the character's copies (`countCopies`), its saved picks or active grants (`countPicks`, `countGrants`), the ruleset's fields (`countFields`) or a list (`countList`), with a root (`copy`, `pick`, `grant`, `f`, `x`) bound to each element, and over a list `i`, its position.
 - **Allocate step:** an action step that spends a budget across fields (FitD's creation dots, 5E point buy) or hands out a list of values, one per field (the standard array); a checkpoint answered with amounts.
 - **App:** the program using the engine; it owns the experience (dice presentation, time, choices, storage, display).
 - **Applied effect:** an entry in the character's `applied` list that turns on the effects of content the character doesn't own (Bless from an ally); the app toggles it, and its own incoming-change effect's `then` can end it (oil that burns away).
@@ -91,7 +91,7 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Proposed change:** a change an action returns for the app to apply, to the acting character, a target or a linked character.
 - **Proposed sheet:** the character with the changes an action has proposed so far `to: self` applied, which a step with `sheet: proposed` reads; built afresh in each call, never stored.
 - **Query:** a link to a set of things written as a rule: a content type plus a `where` condition.
-- **Result band:** a named range of roll results (6− / 7–9 / 10+), declared in a game's rules data. A band set may work out a `value` once, which its bands read (`roll.value`).
+- **Result band:** a named range of roll results (6− / 7–9 / 10+), declared in a game's rules data. A band set may work out a `value` once, which its bands read (`roll.value`), and an effective `total` the roll reports.
 - **Roll item:** one structured piece of an itemized roll (dice or flat), with exactly one source and tags.
 - **Roll modifier:** a kind of `rollModifier` effect value (advantage, disadvantage, reroll, multiplyDice, multiply, …).
 - **Rules document:** a file in a pack's `rules/` folder holding fields, content types, settings and other rules data.

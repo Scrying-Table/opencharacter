@@ -316,6 +316,10 @@ class FormulaChecker<L> {
     }
 
     for (const [set, { def, at }] of rules.bands) {
+      if (def.total !== undefined)
+        this.typed({ roll: bandRoll(this.talliesRoot()), participants: 'dyn' }, () =>
+          this.at('band', () => this.formula(def.total, at, `band set ${set} total`, ['int'])),
+        );
       let value: FType | undefined;
       if (def.value !== undefined)
         this.typed({ roll: bandRoll(this.talliesRoot()), participants: 'dyn' }, () =>
@@ -1299,7 +1303,7 @@ class FormulaChecker<L> {
     );
   }
 
-  /** The formulas a change passes on bind their own roots, so they don't see `x`. */
+  /** The formulas a change passes on bind their own roots, so they don't see `x` or `i`. */
   private forEach(formula: Formula | undefined, at: L, where: string, fn: () => void): void {
     if (formula === undefined) return fn();
     this.formula(formula, at, where, [{ list: 'dyn' }]);
@@ -1307,7 +1311,7 @@ class FormulaChecker<L> {
     const type = tree.ok ? check(tree.value, this.checkContext()) : undefined;
     const element: FType =
       type?.ok && typeof type.value === 'object' && 'list' in type.value ? type.value.list : 'dyn';
-    this.typed({ x: element }, () => this.withRoots(['x'], fn));
+    this.typed({ x: element, i: 'int' }, () => this.withRoots(['x', 'i'], fn));
   }
 
   private computedField(change: ProposedChange, at: L, where: string): void {
