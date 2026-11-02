@@ -1,0 +1,13 @@
+id: complications.betrothed
+type: complication
+choices:
+  - id: trinket
+    from:
+      type: trinket
+      where: 'item.echelon == 1'
+    addAs: copy
+    recommend: options[0]
+effects:
+  - target: renown
+    op: atMost
+    value: max(0, level - 1)

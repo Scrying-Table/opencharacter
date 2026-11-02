@@ -1,0 +1,6 @@
+id: complications.host-body
+type: complication
+effects:
+  - target: weakness.fire
+    op: atLeast
+    value: 5

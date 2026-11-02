@@ -1,0 +1,9 @@
+id: complications.amnesia
+type: complication
+choices:
+  - id: trinket
+    from:
+      type: trinket
+      where: 'item.echelon == 1'
+    addAs: copy
+    recommend: options[0]

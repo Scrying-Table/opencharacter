@@ -1,0 +1,13 @@
+id: complications.cursed-weapon
+type: complication
+choices:
+  - id: weapon
+    from:
+      type: leveledTreasure
+      where: "item.category == 'weapon'"
+    addAs: copy
+    recommend: options[0]
+effects:
+  - target: weakness.all
+    op: atLeast
+    value: 2

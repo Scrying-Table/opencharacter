@@ -1,0 +1,9 @@
+id: complications.strange-inheritance
+type: complication
+choices:
+  - id: trinket
+    from:
+      type: trinket
+      where: 'item.echelon == 2'
+    addAs: copy
+    recommend: options[0]

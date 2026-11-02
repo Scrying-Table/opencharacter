@@ -1,0 +1,67 @@
+id: abilities.talent.soul-burn
+type: ability
+tags:
+  - kw.animapathy
+  - kw.psionic
+  - kw.ranged
+  - kw.strike
+fields:
+  usage: main-action
+  kind: heroic
+  class: classes.talent
+  level: 3
+  resource: clarity
+  cost: 7
+  distanceKind: ranged
+  distance: 10
+  rollChars:
+    - presence
+  damageType: untyped
+  t1Damage: 6
+  t1PotencyChar: presence
+  t1Potency: weak
+  t1Condition: conditions.dazed
+  t1Duration: save
+  t2Damage: 10
+  t2PotencyChar: presence
+  t2Potency: average
+  t2Condition: conditions.dazed
+  t2Duration: save
+  t3Damage: 14
+  t3PotencyChar: presence
+  t3Potency: strong
+  t3Condition: conditions.dazed
+  t3Duration: save
+effects:
+  # Strained: the potency increases by 1.
+  - target: { rolls: [power-roll.ability], from: self, tally: potencyBonus }
+    op: add
+    value: 1
+    when: >-
+      (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+        || (has(params.talentStrain) && params.talentStrain)
+  - target:
+      steps:
+        - ability.pay
+      from: self
+    op: changes
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+      || (has(params.talentStrain) && params.talentStrain)
+    value:
+      changes:
+        - type: adjust
+          field: surges.current
+          by: 3
+  - target:
+      steps:
+        - ability.after
+      from: self
+    op: changes
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+      || (has(params.talentStrain) && params.talentStrain)
+    value:
+      changes:
+        - type: adjust
+          field: stamina.current
+          by: -2d6
+          tags: [damage, talent.strain]

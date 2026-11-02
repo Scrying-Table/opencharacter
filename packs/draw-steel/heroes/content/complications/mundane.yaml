@@ -1,0 +1,21 @@
+id: complications.mundane
+type: complication
+effects:
+  - target: immunity.corruption
+    op: atLeast
+    value: level
+  - target: immunity.holy
+    op: atLeast
+    value: level
+  - target: immunity.psychic
+    op: atLeast
+    value: level
+  - target:
+      rolls:
+        - power-roll
+      tally: banes
+    op: add
+    value: 1
+    when: |-
+      countCopies(copy.type in ['consumable', 'trinket', 'leveledTreasure', 'artifact']
+        && 'kw.magic' in copy.tags) > 3

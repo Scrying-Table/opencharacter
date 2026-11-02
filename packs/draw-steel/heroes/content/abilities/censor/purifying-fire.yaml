@@ -1,0 +1,47 @@
+id: abilities.censor.purifying-fire
+type: ability
+tags:
+  - kw.magic
+  - kw.melee
+  - kw.ranged
+  - kw.strike
+  - kw.weapon
+fields:
+  usage: main-action
+  kind: heroic
+  class: classes.censor
+  level: 1
+  resource: wrath
+  cost: 5
+  distanceKind: melee-or-ranged
+  distance: 1
+  rangedDistance: 5
+  rollChars:
+    - might
+  damageType: holy
+  t1Damage: 5
+  t2Damage: 9
+  t3Damage: 12
+# The fire weakness is this ability applied to the target (save ends), its value the tier's.
+state:
+  duration: { type: string, default: save }
+  value: { type: integer, default: 3, min: 0 }
+reapply: { state: { duration: replace, value: highest } }
+effects:
+  - target: { steps: [ability.hit], from: self }
+    op: changes
+    when: >-
+      flags.tier > 0
+        && participant.characteristics.might.score
+          < [potency.weak, potency.average, potency.strong][flags.tier - 1]
+    value:
+      changes:
+        - type: applyEffect
+          source: "'abilities.censor.purifying-fire'"
+          state: { duration: "'save'", value: '[3, 5, 7][flags.tier - 1]' }
+  - { target: weakness.fire, op: atLeast, value: self.value, scope: applied }
+actions:
+  - use: saving-throw
+    scope: applied
+    available: "self.duration == 'save'"
+    params: { entry: self.id }

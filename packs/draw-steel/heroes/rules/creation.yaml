@@ -1,0 +1,156 @@
+# Creation: guided (the class's Quick Build picks recommended) and random (every pick drawn).
+creation:
+  - { id: guided, action: create-hero }
+  - { id: random, action: create-hero, params: { random: true }, random: true }
+
+actions:
+  - id: create-hero
+    tags: [creation]
+    available: character.creating
+    params:
+      random: { type: boolean, default: false }
+      level: { type: integer, default: 1, min: 1, max: 10 }
+      complication: { type: boolean, default: false }
+    results: [created]
+    steps:
+      - id: ancestry
+        kind: choice
+        random: params.random
+        options: { content: { type: ancestry } }
+        recommend: options[0]
+        changes: [{ type: addItem, entry: { item: picked.id } }]
+      - id: culture
+        kind: choice
+        random: params.random
+        options: { content: { type: culture } }
+        recommend: options[0]
+        changes: [{ type: addItem, entry: { item: picked.id } }]
+      - id: career
+        kind: choice
+        random: params.random
+        options: { content: { type: career } }
+        recommend: options[0]
+        changes: [{ type: addItem, entry: { item: picked.id } }]
+      - id: class
+        kind: choice
+        random: params.random
+        options: { content: { type: class } }
+        recommend: options[0]
+        changes: [{ type: addItem, entry: { item: picked.id, state: { level: params.level } } }]
+      # The array for the characteristics that aren't primary.
+      - id: array
+        kind: choice
+        when: has(steps.class)
+        random: params.random
+        options:
+          - {
+              id: two-a,
+              when: size(steps.class.item.primaries) == 2,
+              flags: { array: '[2, -1, -1]' },
+            }
+          - {
+              id: two-b,
+              when: size(steps.class.item.primaries) == 2,
+              flags: { array: '[1, 1, -1]' },
+            }
+          - {
+              id: two-c,
+              when: size(steps.class.item.primaries) == 2,
+              flags: { array: '[1, 0, 0]' },
+            }
+          - {
+              id: one-a,
+              when: size(steps.class.item.primaries) == 1,
+              flags: { array: '[2, 2, -1, -1]' },
+            }
+          - {
+              id: one-b,
+              when: size(steps.class.item.primaries) == 1,
+              flags: { array: '[2, 1, 1, -1]' },
+            }
+          - {
+              id: one-c,
+              when: size(steps.class.item.primaries) == 1,
+              flags: { array: '[2, 1, 0, 0]' },
+            }
+          - {
+              id: one-d,
+              when: size(steps.class.item.primaries) == 1,
+              flags: { array: '[1, 1, 1, 0]' },
+            }
+        recommend: "size(steps.class.item.primaries) == 2 ? 'two-a' : 'one-a'"
+      - id: primaries
+        kind: changes
+        when: has(steps.class)
+        changes:
+          - type: set
+            forEach: steps.class.item.primaries
+            field: { formula: "fieldId('characteristics.{characteristic}.base', x)" }
+            value: 2
+      # The array goes to the characteristics that aren't primary, highest first in the class's
+      # `arrayPriority` order (which must list every characteristic that isn't primary). One step
+      # for each array length: a step hands out each of its values exactly once.
+      - id: rest
+        kind: allocate
+        when: has(steps.array) && size(steps.class.item.primaries) == 2
+        random: params.random
+        fields:
+          type: field
+          where: >-
+            'characteristic-base' in item.tags
+              && countList(steps.class.item.primaries, ('characteristic-base.' + x) in item.tags) == 0
+        values: ['flags.array[0]', 'flags.array[1]', 'flags.array[2]']
+        recommend: >-
+          flags.array[indexOf(mapList(filterList(steps.class.item.arrayPriority, !(x in steps.class.item.primaries)),
+            fieldId('characteristics.{characteristic}.base', x)), field.id)]
+      - id: restOne
+        kind: allocate
+        when: has(steps.array) && size(steps.class.item.primaries) == 1
+        random: params.random
+        fields:
+          type: field
+          where: >-
+            'characteristic-base' in item.tags
+              && countList(steps.class.item.primaries, ('characteristic-base.' + x) in item.tags) == 0
+        values: ['flags.array[0]', 'flags.array[1]', 'flags.array[2]', 'flags.array[3]']
+        recommend: >-
+          flags.array[indexOf(mapList(filterList(steps.class.item.arrayPriority, !(x in steps.class.item.primaries)),
+            fieldId('characteristics.{characteristic}.base', x)), field.id)]
+      - id: picks
+        kind: choice
+        sheet: proposed
+        random: params.random
+        options: { pending: {} }
+      # An optional complication (not lycanthropy for a stormwight fury, not Gnoll-Mauled for a hero
+      # who can't be dazed), then its own picks.
+      - id: complication
+        kind: choice
+        when: params.complication
+        sheet: proposed
+        random: params.random
+        options:
+          content:
+            type: complication
+            where: >-
+              (item.id != @complications.slight-case-of-lycanthropy
+                || countPicks(pick.item == @subclasses.fury.stormwight) == 0)
+                && (item.id != @complications.gnoll-mauled
+                  || countPicks(pick.item == @ancestry-traits.high-elf.unstoppable-mind
+                    || pick.item == @ancestry-traits.time-raider.unstoppable-mind) == 0)
+        recommend: options[0]
+        changes: [{ type: addItem, entry: { item: picked.id } }]
+      - id: complicationPicks
+        kind: choice
+        when: params.complication
+        sheet: proposed
+        random: params.random
+        options: { pending: {} }
+      - id: finish
+        kind: changes
+        sheet: proposed
+        changes:
+          - { type: set, field: xp.current, value: 16 * (params.level - 1) }
+          - { type: set, field: stamina.current, value: stamina.max }
+          - { type: set, field: recoveries.spent, value: 0 }
+          - { type: finishCreation }
+      - { id: done, kind: outcome, result: "'created'" }

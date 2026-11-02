@@ -1,0 +1,24 @@
+# The psi boosts are parameters of a psionic main action or maneuver (declared with the Talent's,
+# which has the same boosts); this adds their discipline to the ability's cost. From 10th level,
+# Manifold Resonance's 1 discipline pays for 1 of it.
+id: features.null.psi-boost
+type: feature
+fields:
+  class: classes.null
+  level: 7
+effects:
+  - { target: talent.psiBoost, op: set, value: 'true' }
+  - target: { steps: [ability.extra] }
+    op: changes
+    when: "'kw.psionic' in action.item.tags"
+    value:
+      flags:
+        extra: >-
+          max(0, ((has(params.psiDynamic) && params.psiDynamic) ? 1 : 0)
+              + ((has(params.psiExpanded) && params.psiExpanded) ? 3 : 0)
+              + ((has(params.psiExtended) && params.psiExtended) ? 1 : 0)
+              + ((has(params.psiHeightened) && params.psiHeightened) ? 1 : 0)
+              + ((has(params.psiMagnified) && params.psiMagnified) ? 5 : 0)
+              + ((has(params.psiShared) && params.psiShared) ? 5 : 0)
+              + ((has(params.psiSharpened) && params.psiSharpened) ? 1 : 0)
+              - (level >= 10 ? 1 : 0))

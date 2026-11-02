@@ -1,0 +1,8 @@
+id: features.talent.omnisensory
+type: feature
+fields:
+  class: classes.talent
+  level: 10
+effects:
+  # +10 distance for ranged abilities.
+  - { target: abilities.rangeBonus, op: add, value: 10 }

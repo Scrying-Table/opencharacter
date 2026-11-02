@@ -1,0 +1,21 @@
+id: abilities.kits.weakening-brand
+type: ability
+tags:
+  - kw.magic
+  - kw.melee
+  - kw.strike
+  - kw.weapon
+fields:
+  usage: main-action
+  kind: kit
+  distanceKind: melee
+  distance: 1
+  rollChars:
+    - might
+    - reason
+    - intuition
+    - presence
+  damageType: holy
+  t1Damage: 2
+  t2Damage: 4
+  t3Damage: 7

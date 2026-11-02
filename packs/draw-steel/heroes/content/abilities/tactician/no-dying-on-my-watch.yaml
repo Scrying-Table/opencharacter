@@ -1,0 +1,30 @@
+id: abilities.tactician.no-dying-on-my-watch
+type: ability
+tags:
+  - kw.ranged
+  - kw.strike
+  - kw.weapon
+fields:
+  usage: triggered
+  kind: heroic
+  class: classes.tactician
+  subclass: subclasses.tactician.vanguard
+  level: 2
+  resource: focus
+  cost: 5
+  distanceKind: ranged
+  distance: 5
+  rollChars:
+    - might
+  t1PotencyChar: reason
+  t1Potency: weak
+  t1Condition: conditions.frightened
+  t1Duration: save
+  t2PotencyChar: reason
+  t2Potency: average
+  t2Condition: conditions.frightened
+  t2Duration: save
+  t3PotencyChar: reason
+  t3Potency: strong
+  t3Condition: conditions.frightened
+  t3Duration: save

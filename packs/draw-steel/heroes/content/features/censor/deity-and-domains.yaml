@@ -1,0 +1,28 @@
+id: features.censor.deity-and-domains
+type: feature
+fields:
+  class: classes.censor
+  level: 1
+# The censor's one domain is one of the conduit's domains. The pick names the domain, and the
+# domain grants its 1st-, 4th- and 7th-level features as the hero reaches them: the conduit's,
+# whose text and numbers read the holder's class (Presence, My Life for Yours, wrath), except
+# Storm's 7th-level feature, which is the censor's own Ride the Lightning.
+choices:
+  - id: domain
+    from: { type: subclass, where: 'item.class == @classes.conduit' }
+    activate: false
+    recommend: '@subclasses.conduit.war'
+effects:
+  # Domain features use the censor's Presence.
+  - { target: conduit.domainScore, op: set, value: characteristics.presence.score }
+grants:
+  - forEach: picksOf('domain')
+    item:
+      query:
+        type: feature
+        where: >-
+          has(item.subclass) && item.subclass == x && item.class == @classes.conduit
+            && item.level <= self.level
+            && item.id != @features.conduit.thunderstruck
+  - item: features.censor.ride-the-lightning
+    when: "@subclasses.conduit.storm in picksOf('domain') && self.level >= 7"

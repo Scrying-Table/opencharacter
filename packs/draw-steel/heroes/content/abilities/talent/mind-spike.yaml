@@ -1,0 +1,48 @@
+id: abilities.talent.mind-spike
+type: ability
+tags:
+  - kw.psionic
+  - kw.ranged
+  - kw.strike
+  - kw.telepathy
+fields:
+  usage: main-action
+  kind: free-strike
+  class: classes.talent
+  level: 1
+  distanceKind: ranged
+  distance: 10
+  rollChars:
+    - reason
+  damageType: psychic
+  t1Damage: 2
+  t2Damage: 4
+  t3Damage: 6
+effects:
+  - target:
+      rolls:
+        - damage
+      from: self
+    op: add
+    value: 2
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+      || (has(params.talentStrain) && params.talentStrain)
+    tags:
+      - damage.psychic
+  - target:
+      steps:
+        - ability.after
+      from: self
+    op: changes
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+      || (has(params.talentStrain) && params.talentStrain)
+    value:
+      changes:
+        - type: adjust
+          field: stamina.current
+          by: -2
+          tags:
+            - damage
+            - damage.psychic
+            - damage.unreducible
+            - talent.strain

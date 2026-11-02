@@ -1,0 +1,23 @@
+# The creature who damaged you is slowed until the end of their next turn; at 5th level it also
+# takes corruption damage equal to twice your highest characteristic score.
+id: abilities.treasure.kuranzoi-prismscale.capture-a-moment
+type: ability
+tags: [kw.psionic]
+fields: { usage: triggered, kind: treasure, distanceKind: ranged, distance: 5 }
+effects:
+  - target: { steps: [ability.hit], from: self }
+    op: changes
+    value:
+      changes:
+        - type: applyEffect
+          source: '@conditions.slowed'
+          state: { duration: "'eot'" }
+  - target: { steps: [ability.hit], from: self }
+    op: changes
+    when: level >= 5
+    value:
+      changes:
+        - type: adjust
+          field: stamina.current
+          by: -2 * characteristics.highest
+          tags: [damage, damage.corruption]

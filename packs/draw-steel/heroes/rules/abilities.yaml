@@ -1,0 +1,550 @@
+contentTypes:
+  # An ability: a hero's (class, kit, ancestry, perk, title, treasure) or, in a pack built on this
+  # one, a creature's. Its text is the book's: `description` is the flavor, the named texts the
+  # card. Its fields are what the shared `use-ability` action works out; an ability whose rules
+  # go further adds them through tagged steps or its own actions.
+  ability:
+    grantOnly: true
+    texts: [trigger, target, distance, roll, tier1, tier2, tier3, effect]
+    fields:
+      usage:
+        type: enum
+        values:
+          [main-action, maneuver, move-action, triggered, free-triggered, free-maneuver, no-action]
+        required: true
+        open: true
+      kind:
+        type: enum
+        values:
+          [
+            signature,
+            heroic,
+            feature,
+            free-strike,
+            common,
+            kit,
+            ancestry,
+            perk,
+            title,
+            treasure,
+            complication,
+          ]
+        default: feature
+        open: true
+      class: { type: id, of: class }
+      subclass: { type: id, of: subclass }
+      level: { type: integer, default: 1, min: 1 }
+      # The heroic resource it costs, and how much; "Spend N" and "Spend N+" options.
+      resource:
+        type: enum
+        values: [ferocity, wrath, piety, essence, discipline, insight, focus, clarity, drama]
+        open: true
+      cost: { type: integer, default: 0, min: 0 }
+      spendCost: { type: integer, default: 0, min: 0 }
+      spendPlus: { type: boolean, default: false }
+      # Distance: `distance` is the melee or ranged distance, the burst, aura or cube size, a
+      # line's length or a wall's squares; `rangedDistance` the ranged part of "melee N or
+      # ranged M"; `areaWidth` a line's width; `within` an area's range; `areaCount` how many.
+      distanceKind:
+        type: enum
+        values: [melee, ranged, melee-or-ranged, self, burst, cube, line, wall, aura, special]
+        default: special
+        open: true
+      distance: { type: integer, default: 0, min: 0 }
+      rangedDistance: { type: integer, default: 0, min: 0 }
+      areaWidth: { type: integer, default: 0, min: 0 }
+      within: { type: integer, default: 0, min: 0 }
+      areaCount: { type: integer, default: 1, min: 1 }
+      # The power roll: the best of these characteristics (keys of `characteristic`), plus a fixed
+      # bonus (a creature's). No characteristic and no bonus: no power roll.
+      rollChars: { type: list, of: string, unique: true, default: [] }
+      rollBonus: { type: integer, default: 0 }
+      # Per tier: damage (absent: none), whether the characteristic adds to it, a condition the
+      # target gets (behind a potency when one is given), and forced movement.
+      damageType:
+        type: enum
+        values: [untyped, acid, cold, corruption, fire, holy, lightning, poison, psychic, sonic]
+        default: untyped
+        open: true
+      't{tier}Damage': { type: integer, min: 0 }
+      't{tier}AddsChar': { type: boolean, default: true }
+      't{tier}PotencyChar': { type: enum, values: [might, agility, reason, intuition, presence] }
+      't{tier}Potency': { type: enum, values: [weak, average, strong] }
+      't{tier}PotencyValue': { type: integer }
+      't{tier}Condition': { type: id, of: condition }
+      't{tier}Duration': { type: enum, values: [eot, save, encounter, until] }
+      't{tier}Move': { type: enum, values: [push, pull, slide] }
+      't{tier}MoveVertical': { type: boolean, default: false }
+      't{tier}MoveDistance': { type: integer, min: 0 }
+      # "Slide 2 + R": the characteristic rolled adds to the distance.
+      't{tier}MoveAddsChar': { type: boolean, default: false }
+      # "M < WEAK, pull 1": the forced movement happens only when the potency gets through.
+      't{tier}MovePotency': { type: boolean, default: false }
+      # A non-condition effect the target gets instead of a condition, behind the same potency
+      # and with the same duration ("R < WEAK, damage weakness 5 (save ends)").
+      't{tier}Effect': { type: id, of: effect }
+    # What this hero's card shows: the characteristic rolled (the best of `rollChars`), each
+    # tier's damage with it and the kit's bonus, each tier's potency, and the distance with the
+    # kit's. `use-ability` reads the same values. Melee for an ability that can be either.
+    computed:
+      char:
+        type: string
+        formula: >-
+          size(item.rollChars) == 0 ? 'none'
+            : sortList(item.rollChars, -fieldOf('characteristics.{characteristic}.score', x))[0]
+      charScore:
+        type: integer
+        formula: "self.char == 'none' ? 0 : fieldOf('characteristics.{characteristic}.score', self.char)"
+      mode:
+        type: string
+        formula: >-
+          item.distanceKind == 'ranged' || ('kw.ranged' in item.tags && !('kw.melee' in item.tags))
+            ? 'ranged' : 'melee'
+      damage1:
+        type: integer
+        formula: >-
+          (has(item.t1Damage) ? item.t1Damage : 0) + (item.t1AddsChar ? self.charScore : 0)
+            + ('kw.weapon' in item.tags && 'kw.melee' in item.tags && self.mode == 'melee' ? kit.melee1
+              : 'kw.weapon' in item.tags && 'kw.ranged' in item.tags && self.mode == 'ranged' ? kit.ranged1 : 0)
+      damage2:
+        type: integer
+        formula: >-
+          (has(item.t2Damage) ? item.t2Damage : 0) + (item.t2AddsChar ? self.charScore : 0)
+            + ('kw.weapon' in item.tags && 'kw.melee' in item.tags && self.mode == 'melee' ? kit.melee2
+              : 'kw.weapon' in item.tags && 'kw.ranged' in item.tags && self.mode == 'ranged' ? kit.ranged2 : 0)
+      damage3:
+        type: integer
+        formula: >-
+          (has(item.t3Damage) ? item.t3Damage : 0) + (item.t3AddsChar ? self.charScore : 0)
+            + ('kw.weapon' in item.tags && 'kw.melee' in item.tags && self.mode == 'melee' ? kit.melee3
+              : 'kw.weapon' in item.tags && 'kw.ranged' in item.tags && self.mode == 'ranged' ? kit.ranged3 : 0)
+      potency1:
+        type: integer
+        formula: >-
+          has(item.t1PotencyValue) ? item.t1PotencyValue
+            : has(item.t1Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t1Potency)] : 0
+      potency2:
+        type: integer
+        formula: >-
+          has(item.t2PotencyValue) ? item.t2PotencyValue
+            : has(item.t2Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t2Potency)] : 0
+      potency3:
+        type: integer
+        formula: >-
+          has(item.t3PotencyValue) ? item.t3PotencyValue
+            : has(item.t3Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t3Potency)] : 0
+      # The hero's potencies, for texts that name one outside the tier fields.
+      potencyWeak: { type: integer, formula: potency.weak }
+      potencyAverage: { type: integer, formula: potency.average }
+      potencyStrong: { type: integer, formula: potency.strong }
+      # The bonus to a ranged ability's distance from the hero's features (Omnisensory, Prayer of
+      # Distance, …): on a ranged ability's distance, the ranged part of "melee or ranged", or
+      # an area's range ("within").
+      rangeBonus:
+        type: integer
+        formula: >-
+          !('kw.ranged' in item.tags) ? 0
+            : abilities.rangeBonus + ('kw.magic' in item.tags ? abilities.rangeBonus.magic : 0)
+              + ('kw.psionic' in item.tags ? abilities.rangeBonus.psionic : 0)
+              + ('kw.magic' in item.tags && 'kw.void' in item.tags ? abilities.rangeBonus.voidMagic : 0)
+      distance:
+        type: integer
+        formula: >-
+          item.distance + ('kw.weapon' in item.tags && item.distanceKind in ['melee', 'melee-or-ranged'] ? kit.meleeDistance
+            : 'kw.weapon' in item.tags && item.distanceKind == 'ranged' ? kit.rangedDistance : 0)
+            + (item.distanceKind == 'ranged' ? self.rangeBonus : 0)
+      rangedDistance:
+        type: integer
+        formula: >-
+          item.rangedDistance == 0 ? 0
+            : item.rangedDistance + ('kw.weapon' in item.tags ? kit.rangedDistance : 0) + self.rangeBonus
+      within:
+        type: integer
+        formula: 'item.within == 0 ? 0 : item.within + self.rangeBonus'
+    actions:
+      - use: use-ability
+
+# Every hero has the common abilities (free strikes, Charge, Defend, Catch Breath, …).
+standardCopies:
+  - { type: ability, where: "'common' in item.tags" }
+
+fields:
+  # A heroic ability with a power roll costs this much less when the roll has an edge or double
+  # edge against any target (the Shadow's insight discount).
+  abilities.edgeDiscount: { type: integer, formula: 0, min: 0 }
+  # Abilities that cost nothing to use right now (an Elementalist's maintained abilities).
+  abilities.free: { type: set, of: ability, formula: '[]' }
+  # Bonuses to the distance of ranged abilities: any, magic, psionic, and void magic ones. An
+  # area's bonus goes to its range ("within"), not its size.
+  abilities.rangeBonus: { type: integer, formula: 0 }
+  abilities.rangeBonus.magic: { type: integer, formula: 0 }
+  abilities.rangeBonus.psionic: { type: integer, formula: 0 }
+  abilities.rangeBonus.voidMagic: { type: integer, formula: 0 }
+
+effects:
+  # A kit's damage bonus for the tier each target got, on weapon abilities that deal damage.
+  - id: kit-melee-damage
+    target: { rolls: [damage.kit-melee] }
+    op: add
+    value: '[kit.melee1, kit.melee2, kit.melee3][max(0, min(2, flags.tier - 1))]'
+    tags:
+      [{ formula: "roll.item.damageType == 'untyped' ? [] : ['damage.' + roll.item.damageType]" }]
+  - id: kit-ranged-damage
+    target: { rolls: [damage.kit-ranged] }
+    op: add
+    value: '[kit.ranged1, kit.ranged2, kit.ranged3][max(0, min(2, flags.tier - 1))]'
+    tags:
+      [{ formula: "roll.item.damageType == 'untyped' ? [] : ['damage.' + roll.item.damageType]" }]
+  # What each target brings to the power roll, on its own tier (`power-target`): an edge against
+  # a prone target (melee), a restrained one, one frightened of the user or one a tactician
+  # marked; a bane when the user is frightened of the target, and on every target when the user
+  # is grabbed (a double bane when taunted) and the ability doesn't target the grabber (taunter).
+  - id: target-prone
+    target: { rolls: [power-target], tally: edges }
+    op: add
+    value: 1
+    when: "'kw.melee' in action.item.tags && flags.mode == 'melee' && participant.conditions.prone"
+  - id: target-restrained
+    target: { rolls: [power-target], tally: edges }
+    op: add
+    value: 1
+    when: participant.conditions.restrained
+  - id: target-frightened
+    target: { rolls: [power-target], tally: edges }
+    op: add
+    value: 1
+    when: character.id in participant.conditions.frightenedBy
+  - id: target-marked
+    target: { rolls: [power-target], tally: edges }
+    op: add
+    value: 1
+    when: size(participant.tactician.markedBy) > 0
+  - id: user-grabbed
+    target: { rolls: [power-target], tally: banes }
+    op: add
+    value: 1
+    when: conditions.grabbed && countList(participants.target, x.id in conditions.grabbedBy) == 0
+  - id: user-taunted
+    target: { rolls: [power-target], tally: banes }
+    op: add
+    value: 2
+    when: conditions.taunted && countList(participants.target, x.id in conditions.tauntedBy) == 0
+  - id: user-frightened
+    target: { rolls: [power-target], tally: banes }
+    op: add
+    value: 1
+    when: participant.id in conditions.frightenedBy
+
+actions:
+  # Using an ability. Pass the targets as `target` participants (their `creature` fields); each
+  # gets its own tier from the one power roll, with the edges and banes that target brings.
+  # The cost is paid after the roll, so a discount the roll earns counts; a use that can't pay
+  # ends there. Tagged steps content adds to: `ability.pay` (costs), `ability.spend` (a "Spend"
+  # paid), `ability.hit` (per target, after damage and conditions), `ability.after` (once, at the
+  # end). The action carries the ability's usage and keywords as tags.
+  - id: use-ability
+    tags: [ability, { formula: "'usage.' + item.usage" }, { formula: item.tags }]
+    available: >-
+      !stamina.dead && (item.cost == 0 || item.id in abilities.free
+        || (combat.active
+          ? heroic.current - max(0, item.cost - (item.kind == 'heroic' && size(item.rollChars) > 0 ? abilities.edgeDiscount : 0)) >= heroic.min
+          : !(item.id in abilities.usedOutside)))
+    params:
+      # The characteristic to roll, when the ability offers several (default: the best).
+      characteristic:
+        { type: enum, values: [might, agility, reason, intuition, presence], optional: true }
+      # Melee or ranged, for an ability that can be either.
+      mode: { type: enum, values: [melee, ranged], optional: true }
+      # Extra heroic resource spent on the ability's "Spend" option.
+      spend: { type: integer, default: 0, min: 0 }
+      # Surges spent for extra damage to one target (the first), on an ability that deals rolled
+      # damage.
+      surges: { type: integer, default: 0, min: 0, max: 3 }
+      # 2 surges spent to raise a potency by 1 against one target (the first).
+      potencySurge: { type: boolean, default: false }
+      # Ask whether to downgrade each target's tier.
+      downgrade: { type: boolean, default: false }
+    participants:
+      target: { fields: creature }
+    results: [used, unaffordable, tier1, tier2, tier3]
+    steps:
+      - id: setup
+        kind: branch
+        cases:
+          - when: 'true'
+            flags:
+              char: 'has(params.characteristic) ? params.characteristic : self.char'
+              mode: 'has(params.mode) ? params.mode : self.mode'
+              cost: 0
+              extra: 0
+              surges: >-
+                (has(item.t1Damage) && (size(item.rollChars) > 0 || item.rollBonus != 0) && size(participants.target) > 0 ? params.surges : 0)
+                  + (params.potencySurge && size(participants.target) > 0 ? 2 : 0)
+              tier: 0
+              cond: "''"
+              dur: "'until'"
+              pchar: "''"
+              pval: 0
+              landed: 'false'
+              move: "''"
+              moveDistance: 0
+              moveGated: 'false'
+              teleport: 0
+              resist: 0
+      # An extra cost content adds to this use (psi boosts), as `flags.extra`; it is paid with the
+      # ability's, and strained effects count it.
+      - id: extra
+        kind: changes
+        tags: [ability.extra]
+      - id: roll
+        kind: roll
+        when: flags.char != 'none' || item.rollBonus != 0
+        tags: [power-roll, power-roll.ability, { formula: item.tags }]
+        bands: power
+        parts:
+          - dice: 2d10
+          - field: "'characteristics.' + flags.char + '.score'"
+            when: flags.char != 'none'
+          - value: item.rollBonus
+            when: item.rollBonus != 0
+      # Each target's tier: the roll banded again with what that target brings (rules effects
+      # on `power-target`).
+      - id: tier
+        kind: roll
+        each: target
+        when: has(steps.roll)
+        of: roll
+        tags: [power-target]
+        bands: power
+      - id: downgrade
+        kind: choice
+        each: target
+        when: "params.downgrade && has(steps.tier) && steps.tier.band != 'tier1'"
+        options:
+          - { id: keep }
+          - { id: tier2, when: "steps.tier.band == 'tier3'" }
+          - { id: tier1 }
+        recommend: "'keep'"
+      # The cost: nothing for a free ability, less by the edge discount for a heroic ability
+      # with an edge on any target.
+      - id: cost
+        kind: branch
+        cases:
+          - when: 'true'
+            flags:
+              cost: >-
+                item.cost == 0 || item.id in abilities.free ? 0
+                  : max(0, item.cost - (item.kind == 'heroic' && has(steps.roll)
+                      && (size(participants.target) == 0
+                        ? min(2, steps.roll.tallies.edges) > min(2, steps.roll.tallies.banes)
+                        : countList(steps.tier, min(2, x.tallies.edges) > min(2, x.tallies.banes)) > 0)
+                      ? abilities.edgeDiscount : 0))
+      - id: unaffordable
+        kind: outcome
+        when: >-
+          (combat.active && flags.cost + flags.extra + params.spend > 0
+            && heroic.current - flags.cost - flags.extra - params.spend < heroic.min)
+            || flags.surges > surges.current
+        result: "'unaffordable'"
+      - id: pay
+        kind: changes
+        tags: [ability.pay]
+        changes:
+          - type: adjust
+            when: combat.active && flags.cost + flags.extra + params.spend > 0
+            field: heroic.current
+            by: -(flags.cost + flags.extra + params.spend)
+          - type: set
+            when: '!combat.active && item.cost > 0'
+            field: abilities.usedOutside
+            value: abilities.usedOutside + [item.id]
+          - { type: adjust, when: flags.surges > 0, field: surges.current, by: -flags.surges }
+      - id: spend
+        kind: changes
+        when: params.spend > 0
+        tags: [ability.spend]
+      - id: outcome
+        kind: branch
+        each: target
+        cases:
+          - when: 'true'
+            flags:
+              tier: >-
+                !has(steps.tier) ? 0
+                  : has(steps.downgrade) && steps.downgrade.picked != 'keep'
+                    ? indexOf(['tier1', 'tier2', 'tier3'], steps.downgrade.picked) + 1
+                  : steps.tier.bandValue
+      - id: effects
+        kind: branch
+        each: target
+        cases:
+          - when: flags.tier == 1
+            flags:
+              cond: "has(item.t1Condition) ? item.t1Condition : has(item.t1Effect) ? item.t1Effect : ''"
+              dur: "has(item.t1Duration) ? item.t1Duration : 'until'"
+              pchar: "has(item.t1PotencyChar) ? item.t1PotencyChar : ''"
+              pval: >-
+                (has(item.t1PotencyValue) ? item.t1PotencyValue
+                  : has(item.t1Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t1Potency)]
+                  : 0) + (has(steps.roll) ? steps.roll.tallies.potencyBonus : 0)
+                  + (params.potencySurge && participant.id == participants.target[0].id ? 1 : 0)
+              move: "has(item.t1Move) ? (item.t1MoveVertical ? 'vertical-' : '') + item.t1Move : ''"
+              moveDistance: >-
+                has(item.t1Move) ? (has(item.t1MoveDistance) ? item.t1MoveDistance : 0)
+                  + (item.t1MoveAddsChar && flags.char != 'none' ? fieldOf('characteristics.{characteristic}.score', flags.char) : 0)
+                  + (has(steps.roll) ? steps.roll.tallies.moveBonus : 0) : 0
+              moveGated: item.t1MovePotency
+          - when: flags.tier == 2
+            flags:
+              cond: "has(item.t2Condition) ? item.t2Condition : has(item.t2Effect) ? item.t2Effect : ''"
+              dur: "has(item.t2Duration) ? item.t2Duration : 'until'"
+              pchar: "has(item.t2PotencyChar) ? item.t2PotencyChar : ''"
+              pval: >-
+                (has(item.t2PotencyValue) ? item.t2PotencyValue
+                  : has(item.t2Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t2Potency)]
+                  : 0) + (has(steps.roll) ? steps.roll.tallies.potencyBonus : 0)
+                  + (params.potencySurge && participant.id == participants.target[0].id ? 1 : 0)
+              move: "has(item.t2Move) ? (item.t2MoveVertical ? 'vertical-' : '') + item.t2Move : ''"
+              moveDistance: >-
+                has(item.t2Move) ? (has(item.t2MoveDistance) ? item.t2MoveDistance : 0)
+                  + (item.t2MoveAddsChar && flags.char != 'none' ? fieldOf('characteristics.{characteristic}.score', flags.char) : 0)
+                  + (has(steps.roll) ? steps.roll.tallies.moveBonus : 0) : 0
+              moveGated: item.t2MovePotency
+          - when: flags.tier == 3
+            flags:
+              cond: "has(item.t3Condition) ? item.t3Condition : has(item.t3Effect) ? item.t3Effect : ''"
+              dur: "has(item.t3Duration) ? item.t3Duration : 'until'"
+              pchar: "has(item.t3PotencyChar) ? item.t3PotencyChar : ''"
+              pval: >-
+                (has(item.t3PotencyValue) ? item.t3PotencyValue
+                  : has(item.t3Potency) ? [potency.weak, potency.average, potency.strong][indexOf(['weak', 'average', 'strong'], item.t3Potency)]
+                  : 0) + (has(steps.roll) ? steps.roll.tallies.potencyBonus : 0)
+                  + (params.potencySurge && participant.id == participants.target[0].id ? 1 : 0)
+              move: "has(item.t3Move) ? (item.t3MoveVertical ? 'vertical-' : '') + item.t3Move : ''"
+              moveDistance: >-
+                has(item.t3Move) ? (has(item.t3MoveDistance) ? item.t3MoveDistance : 0)
+                  + (item.t3MoveAddsChar && flags.char != 'none' ? fieldOf('characteristics.{characteristic}.score', flags.char) : 0)
+                  + (has(steps.roll) ? steps.roll.tallies.moveBonus : 0) : 0
+              moveGated: item.t3MovePotency
+          # No tier (no power roll): nothing lands.
+          - when: 'true'
+            flags:
+              cond: "''"
+              dur: "'until'"
+              pchar: "''"
+              pval: 0
+              move: "''"
+              moveDistance: 0
+              moveGated: 'false'
+      # The target's characteristic against the potency (with any bonus it has to resist).
+      - id: resist
+        kind: branch
+        each: target
+        cases:
+          - { when: "flags.pchar == ''", flags: { resist: 0 } }
+          - when: 'true'
+            flags:
+              resist: >-
+                flags.pchar == 'might' ? participant.characteristics.might.score + participant.potency.resistBonus.might
+                  : flags.pchar == 'agility' ? participant.characteristics.agility.score + participant.potency.resistBonus.agility
+                  : flags.pchar == 'reason' ? participant.characteristics.reason.score + participant.potency.resistBonus.reason
+                  : flags.pchar == 'intuition' ? participant.characteristics.intuition.score + participant.potency.resistBonus.intuition
+                  : participant.characteristics.presence.score + participant.potency.resistBonus.presence
+      # The condition (or effect) lands when there is no potency, or the target's characteristic
+      # is below it; forced movement behind the potency happens only then.
+      - id: potency
+        kind: branch
+        each: target
+        cases:
+          - when: 'true'
+            flags:
+              landed: flags.cond != '' && (flags.pchar == '' || flags.resist < flags.pval)
+              move: "flags.moveGated && flags.pchar != '' && flags.resist >= flags.pval ? '' : flags.move"
+              moveDistance: "flags.moveGated && flags.pchar != '' && flags.resist >= flags.pval ? 0 : flags.moveDistance"
+      - id: damage
+        kind: roll
+        each: target
+        when: flags.tier > 0 && has(item.t1Damage)
+        tags:
+          - damage
+          - {
+              formula: "'kw.weapon' in item.tags && 'kw.melee' in item.tags && flags.mode == 'melee' ? ['damage.kit-melee'] : []",
+            }
+          - {
+              formula: "'kw.weapon' in item.tags && 'kw.ranged' in item.tags && flags.mode == 'ranged' ? ['damage.kit-ranged'] : []",
+            }
+        parts:
+          - value: '[item.t1Damage, has(item.t2Damage) ? item.t2Damage : 0, has(item.t3Damage) ? item.t3Damage : 0][flags.tier - 1]'
+            tags: [{ formula: "item.damageType == 'untyped' ? [] : ['damage.' + item.damageType]" }]
+          - field: "'characteristics.' + flags.char + '.score'"
+            when: "flags.char != 'none' && [item.t1AddsChar, item.t2AddsChar, item.t3AddsChar][flags.tier - 1]"
+            tags: [{ formula: "item.damageType == 'untyped' ? [] : ['damage.' + item.damageType]" }]
+          - value: params.surges * characteristics.highest
+            when: flags.surges > 0 && params.surges > 0 && participant.id == participants.target[0].id
+            tags: [{ formula: "item.damageType == 'untyped' ? [] : ['damage.' + item.damageType]" }]
+      - id: hit
+        kind: changes
+        each: target
+        to: target
+        tags: [ability.hit]
+        changes:
+          - type: adjust
+            when: flags.tier > 0 && has(item.t1Damage)
+            field: stamina.current
+            split: { roll: damage, by: damage }
+            by: -max(0, part.total)
+            tags: [damage]
+          - type: applyEffect
+            when: flags.landed
+            source: flags.cond
+            state: { duration: flags.dur }
+      # Damage when no target is given: the roll's own tier, as the card shows it.
+      - id: preview
+        kind: roll
+        when: size(participants.target) == 0 && has(steps.roll) && has(item.t1Damage)
+        tags: [damage]
+        parts:
+          - value: '[self.damage1, self.damage2, self.damage3][steps.roll.bandValue - 1]'
+            tags: [{ formula: "item.damageType == 'untyped' ? [] : ['damage.' + item.damageType]" }]
+      # Bleeding: a main or triggered action, or a roll with Might or Agility, loses 1d6 + level.
+      - id: bleed
+        kind: roll
+        when: >-
+          conditions.bleeding && (item.usage in ['main-action', 'triggered', 'free-triggered']
+            || (has(steps.roll) && flags.char in ['might', 'agility']))
+        tags: [stamina-loss]
+        parts:
+          - dice: 1d6
+          - field: "'level'"
+      - id: after
+        kind: changes
+        tags: [ability.after]
+        changes:
+          - {
+              type: adjust,
+              when: has(steps.bleed),
+              field: stamina.current,
+              by: -steps.bleed.total,
+              tags: [stamina-loss],
+            }
+      - id: done
+        kind: outcome
+        result: "has(steps.roll) ? steps.roll.band : 'used'"
+        data:
+          natural: 'has(steps.roll) && size(steps.roll.kept) >= 2 ? steps.roll.kept[0] + steps.roll.kept[1] : 0'
+          critical: >-
+            has(steps.roll) && size(steps.roll.kept) >= 2 && steps.roll.kept[0] + steps.roll.kept[1] >= 19
+              && item.usage == 'main-action'
+          tier: 'has(steps.roll) ? steps.roll.bandValue : 0'
+          damage: 'has(steps.preview) ? steps.preview.total : 0'
+          # A bonus on the roll (Extended Power) adds to an area's range, else to the distance.
+          distance: 'self.distance + (has(steps.roll) && item.within == 0 ? steps.roll.tallies.distanceBonus : 0)'
+          within: 'self.within + (has(steps.roll) && item.within > 0 ? steps.roll.tallies.distanceBonus : 0)'
+          rangedDistance: >-
+            self.rangedDistance == 0 ? 0
+              : self.rangedDistance + (has(steps.roll) ? steps.roll.tallies.distanceBonus : 0)
+          targetTiers: flags.tier
+          forcedMovement: flags.move
+          forcedDistance: flags.moveDistance
+          # Squares the user may teleport, per target (content sets it on `ability.hit`).
+          teleport: flags.teleport

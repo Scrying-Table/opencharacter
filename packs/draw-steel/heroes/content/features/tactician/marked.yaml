@@ -1,0 +1,12 @@
+# Applied to a creature a tactician marks: its applier is the tactician. A mark by another
+# tactician replaces it. It ends with the encounter.
+id: features.tactician.marked
+type: condition
+effects:
+  - {
+      target: tactician.markedBy,
+      op: grant,
+      value: { formula: self.appliedBy },
+      scope: applied,
+      when: "self.appliedBy != ''",
+    }

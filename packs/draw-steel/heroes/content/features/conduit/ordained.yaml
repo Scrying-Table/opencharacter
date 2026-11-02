@@ -1,0 +1,18 @@
+id: features.conduit.ordained
+type: feature
+fields:
+  class: classes.conduit
+  level: 9
+effects:
+  # Characteristics count 1 higher when resisting potencies.
+  - { target: potency.resistBonus.might, op: add, value: 1 }
+  - { target: potency.resistBonus.agility, op: add, value: 1 }
+  - { target: potency.resistBonus.reason, op: add, value: 1 }
+  - { target: potency.resistBonus.intuition, op: add, value: 1 }
+  - { target: potency.resistBonus.presence, op: add, value: 1 }
+  # While the hero has 5 or more Victories: a double edge on Presence tests to influence others.
+  # ("to influence other creatures": a test with an interpersonal skill)
+  - target: { rolls: [test.presence], tally: edges }
+    op: add
+    value: 2
+    when: "victories >= 5 && has(params.skill) && itemField(params.skill, 'group') == 'interpersonal'"

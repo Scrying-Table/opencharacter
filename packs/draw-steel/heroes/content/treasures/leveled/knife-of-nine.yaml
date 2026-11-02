@@ -1,0 +1,18 @@
+# The extra damage rising against the same target, and the indentations, are the book's.
+id: treasures.leveled.knife-of-nine
+type: leveledTreasure
+tags:
+  - weapon.light
+  - kw.psionic
+fields:
+  category: weapon
+effects:
+  - target:
+      rolls:
+        - damage
+    op: add
+    value: 1
+    stackKey: treasure-damage
+    when: self.equipped && countList(item.tags, x in kit.gear) > 0 && 'kw.weapon' in action.item.tags
+    tags:
+      - damage.psychic

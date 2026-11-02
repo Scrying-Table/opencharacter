@@ -1,0 +1,48 @@
+id: abilities.talent.greater-kinetic-grip
+type: ability
+tags:
+  - kw.psionic
+  - kw.ranged
+  - kw.strike
+  - kw.telekinesis
+fields:
+  usage: main-action
+  kind: heroic
+  class: classes.talent
+  subclass: subclasses.talent.telekinesis
+  level: 6
+  resource: clarity
+  cost: 9
+  distanceKind: ranged
+  distance: 10
+  rollChars:
+    - reason
+  t3Condition: conditions.prone
+  t3Duration: until
+  t1Move: slide
+  t1MoveDistance: 4
+  t1MoveAddsChar: true
+  t2Move: slide
+  t2MoveDistance: 8
+  t2MoveAddsChar: true
+  t3Move: slide
+  t3MoveDistance: 12
+  t3MoveAddsChar: true
+effects:
+  - target:
+      steps:
+        - ability.after
+      from: self
+    op: changes
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0)
+      || (has(params.talentStrain) && params.talentStrain)
+    value:
+      changes:
+        - type: adjust
+          field: stamina.current
+          by: -2d6
+          tags: [damage, talent.strain]
+        - type: applyEffect
+          source: "'conditions.weakened'"
+          state:
+            duration: "'save'"

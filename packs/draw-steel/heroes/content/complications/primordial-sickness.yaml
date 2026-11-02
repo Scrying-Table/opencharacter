@@ -1,0 +1,12 @@
+id: complications.primordial-sickness
+type: complication
+effects:
+  - target: immunity.corruption
+    op: atLeast
+    value: 5
+  - target: immunity.poison
+    op: atLeast
+    value: 5
+  - target: recoveries.max
+    op: add
+    value: -1

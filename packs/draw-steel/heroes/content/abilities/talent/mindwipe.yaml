@@ -1,0 +1,30 @@
+id: abilities.talent.mindwipe
+type: ability
+tags:
+  - kw.melee
+  - kw.psionic
+  - kw.strike
+  - kw.telepathy
+fields:
+  usage: main-action
+  kind: heroic
+  class: classes.talent
+  level: 8
+  resource: clarity
+  cost: 11
+  distanceKind: melee
+  distance: 2
+  rollChars:
+    - reason
+  damageType: untyped
+  t1Damage: 12
+  t2Damage: 17
+  t3Damage: 23
+effects:
+  # Strained: 3d6 damage.
+  - target: { steps: [ability.after], from: self }
+    op: changes
+    when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0) || (has(params.talentStrain) && params.talentStrain)
+    value:
+      changes:
+        - { type: adjust, field: stamina.current, by: -3d6, tags: [damage, talent.strain] }

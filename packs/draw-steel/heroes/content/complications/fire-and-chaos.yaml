@@ -1,0 +1,9 @@
+id: complications.fire-and-chaos
+type: complication
+effects:
+  - target: immunity.fire
+    op: atLeast
+    value: 5
+  - target: weakness.cold
+    op: atLeast
+    value: 5

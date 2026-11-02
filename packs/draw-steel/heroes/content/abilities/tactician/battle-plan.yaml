@@ -1,0 +1,26 @@
+# Marks each target; you gain 2 surges (allies within 3 squares gain theirs).
+id: abilities.tactician.battle-plan
+type: ability
+tags:
+  - kw.ranged
+fields:
+  usage: maneuver
+  kind: heroic
+  class: classes.tactician
+  subclass: subclasses.tactician.mastermind
+  level: 6
+  resource: focus
+  cost: 9
+  distanceKind: ranged
+  distance: 10
+effects:
+  - target: { steps: [ability.hit], from: self }
+    op: changes
+    value:
+      changes:
+        - type: applyEffect
+          source: "'features.tactician.marked'"
+          state: { duration: "'encounter'" }
+  - target: { steps: [ability.after], from: self }
+    op: changes
+    value: { changes: [{ type: adjust, field: surges.current, by: 2 }] }

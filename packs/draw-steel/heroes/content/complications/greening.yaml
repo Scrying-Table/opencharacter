@@ -1,0 +1,9 @@
+id: complications.greening
+type: complication
+effects:
+  - target: immunity.corruption
+    op: atLeast
+    value: 5
+  - target: weakness.fire
+    op: atLeast
+    value: 5

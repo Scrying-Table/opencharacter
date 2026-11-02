@@ -1,0 +1,9 @@
+id: features.talent.distance-augmentation
+type: feature
+fields:
+  class: classes.talent
+  level: 1
+tags: [talent.augmentation]
+effects:
+  # +2 distance for ranged psionic abilities.
+  - { target: abilities.rangeBonus.psionic, op: add, value: 2 }

@@ -1,0 +1,31 @@
+# Marks the first target (two with Anticipation); your earlier marks end.
+id: abilities.tactician.mark
+type: ability
+tags:
+  - kw.ranged
+fields:
+  usage: maneuver
+  kind: feature
+  class: classes.tactician
+  level: 1
+  distanceKind: ranged
+  distance: 10
+effects:
+  # Your earlier marks end wherever they are, before this use's mark lands.
+  - target: { steps: [ability.pay], from: self }
+    op: changes
+    when: size(participants.target) > 0
+    value:
+      to: applied
+      changes:
+        - type: removeEffect
+          applied: { where: 'item.id == @features.tactician.marked' }
+  - target: { steps: [ability.hit], from: self }
+    op: changes
+    when: >-
+      indexOf(mapList(participants.target, x.id), participant.id) < tactician.markLimit
+    value:
+      changes:
+        - type: applyEffect
+          source: "'features.tactician.marked'"
+          state: { duration: "'encounter'" }

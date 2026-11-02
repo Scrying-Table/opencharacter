@@ -1,0 +1,81 @@
+id: abilities.talent.force-orbs
+type: ability
+tags:
+  - kw.psionic
+  - kw.ranged
+  - kw.strike
+  - kw.telekinesis
+fields:
+  usage: main-action
+  kind: heroic
+  class: classes.talent
+  level: 3
+  resource: clarity
+  cost: 7
+  distanceKind: self
+  # An orb's damage when fired (the card's).
+  t1Damage: 2
+  t1AddsChar: false
+  t2Damage: 3
+  t2AddsChar: false
+  t3Damage: 5
+  t3AddsChar: false
+# Using it makes the orbs (`talent.forceOrbs`, each damage immunity 1); the power roll is the
+# orb fired as a free maneuver, the item's `fire-orb` action.
+effects:
+  - target: { steps: [ability.after], from: self }
+    op: changes
+    value:
+      changes:
+        - type: set
+          field: talent.forceOrbs
+          value: '((combat.active && heroic.current - item.cost - params.spend - flags.extra < 0) ||
+            (has(params.talentStrain) && params.talentStrain)) ? 5 : 3'
+        - type: applyEffect
+          when: (combat.active && heroic.current - item.cost - params.spend - flags.extra < 0) || (has(params.talentStrain) && params.talentStrain)
+          source: "'conditions.weakened'"
+          state: { duration: "'until'" }
+  - { target: immunity.all, op: atLeast, value: talent.forceOrbs }
+  - target: { steps: [combat.end] }
+    op: changes
+    value: { changes: [{ type: set, field: talent.forceOrbs, value: 0 }] }
+followUps:
+  # Each time the hero takes damage, an orb is lost.
+  - id: lose-orb
+    on: { field: stamina.current, tags: [damage], once: true }
+    when: talent.forceOrbs > 0 && change.requested < 0
+    changes: [{ type: adjust, field: talent.forceOrbs, by: -1 }]
+actions:
+  - id: fire-orb
+    tags: [ability]
+    available: talent.forceOrbs > 0
+    participants:
+      target: { fields: creature, max: 1 }
+    results: { bands: power }
+    steps:
+      - id: roll
+        kind: roll
+        tags: [power-roll, power-roll.ability, { formula: item.tags }]
+        bands: power
+        parts:
+          - dice: 2d10
+          - field: "'characteristics.reason.score'"
+      - id: damage
+        kind: roll
+        tags: [damage]
+        parts:
+          - value: '[self.damage1, self.damage2, self.damage3][steps.roll.bandValue - 1]'
+      - id: hit
+        kind: changes
+        each: target
+        to: target
+        changes:
+          - { type: adjust, field: stamina.current, by: -steps.damage.total, tags: [damage] }
+      - id: spend
+        kind: changes
+        changes:
+          - { type: adjust, field: talent.forceOrbs, by: -1 }
+      - id: done
+        kind: outcome
+        result: steps.roll.band
+        data: { damage: steps.damage.total }

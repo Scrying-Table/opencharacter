@@ -1,0 +1,10 @@
+id: features.conduit.trinity-of-trickery
+type: feature
+fields:
+  class: classes.conduit
+  level: 7
+  subclass: subclasses.conduit.trickery
+grants:
+  - item: abilities.conduit.trinity-of-trickery
+computed:
+  censor: { type: boolean, formula: countCopies(copy.item == @classes.censor) > 0 }

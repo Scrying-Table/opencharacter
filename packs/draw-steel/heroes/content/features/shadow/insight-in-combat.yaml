@@ -1,0 +1,23 @@
+id: features.shadow.insight-in-combat
+type: feature
+fields:
+  class: classes.shadow
+  level: 1
+effects:
+  - { target: shadow.surgeInsight, op: add, value: 1 }
+  # The first damage each round that incorporates surges: insight.
+  - target: { steps: [ability.after] }
+    op: changes
+    when: >-
+      combat.active && !shadow.surgeInsightGained && params.surges > 0
+        && size(participants.target) > 0 && has(action.item.t1Damage)
+    value:
+      changes:
+        - { type: adjust, field: heroic.current, by: shadow.surgeInsight }
+        - { type: set, field: shadow.surgeInsightGained, value: 'true' }
+  - target: { steps: [round.start, combat.start, combat.end] }
+    op: changes
+    value: { changes: [{ type: set, field: shadow.surgeInsightGained, value: 'false' }] }
+  # A heroic ability with a power roll costs 1 less with an edge or double edge on it against
+  # any one target (use-ability pays after the roll).
+  - { target: abilities.edgeDiscount, op: add, value: 1 }
