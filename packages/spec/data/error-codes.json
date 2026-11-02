@@ -289,6 +289,11 @@
       "description": "A situational choice is selected (true, or a non-default value) while its `available` condition is false. Data: `situational`, its qualified ID. Also a runtime error from applyChanges, for a choice an `adjust` carries in `situational` that isn't offered or whose `incoming` doesn't match the change; it rejects the batch."
     },
     {
+      "id": "unknown-situational",
+      "kind": "action",
+      "description": "A situational choice the app gives is not declared by the ruleset (its ID qualified): in startAction's `situational`, or, as a runtime error from applyChanges that rejects the batch, in an `adjust`'s `situational`. A removed or misspelled choice is reported rather than ignored, so apps drop the IDs computeSheet no longer lists. Data: `situational`, the ID as given."
+    },
+    {
       "id": "missing-param",
       "kind": "action",
       "description": "A required action parameter is missing. Data: `param`, and `action`, `entry` and `source` as for `out-of-range`."

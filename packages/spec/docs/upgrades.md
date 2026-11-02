@@ -99,26 +99,55 @@ so they are part of its public interface, like an API. There is no
 `public` flag: every definition counts. Between two releases, these differences are **interface
 changes**:
 
-| Change                                                                                | `kind`                      | ID                        |
-| ------------------------------------------------------------------------------------- | --------------------------- | ------------------------- |
-| A derived field is removed (homebrew formulas read derived fields)                    | `field-removed`             | `<pack>:<field>`          |
-| A content type is removed                                                             | `content-type-removed`      | `<pack>:<type>`           |
-| An item field is removed from a remaining type, or its `type` or `of` changes         | `item-field-removed`        | `<pack>:<type>/<field>`   |
-| An enum item field loses values                                                       | `item-field-values-removed` | `<pack>:<type>/<field>`   |
-| A tag the pack's rules declare is no longer declared                                  | `tag-removed`               | `<pack>:<tag>`            |
-| A rules action is removed                                                             | `action-removed`            | `<pack>:<action>`         |
-| An open enum stops being open (packs that add to it no longer load)                   | `enum-closed`               | `<pack>:<enum address>`   |
-| A value or option the pack adds to a dependency's enum or choice is gone              | `extension-removed`         | `<target>/<value>`        |
-| An existing choice gains or loses `addAs` (its saved picks' copy links no longer fit) | `choice-copies-changed`     | `<pack>:<owner>/<choice>` |
+| Change                                                                                               | `kind`                      | ID                        |
+| ---------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------- |
+| A derived field is removed (homebrew formulas read derived fields)                                   | `field-removed`             | `<pack>:<field>`          |
+| A content type is removed                                                                            | `content-type-removed`      | `<pack>:<type>`           |
+| An item field is removed from a remaining type, or its `type` or `of` changes                        | `item-field-removed`        | `<pack>:<type>/<field>`   |
+| An enum item field loses values                                                                      | `item-field-values-removed` | `<pack>:<type>/<field>`   |
+| A tag the pack's rules declare is no longer declared                                                 | `tag-removed`               | `<pack>:<tag>`            |
+| A rules action is removed, or an inline action or `use` from a remaining item or content type        | `action-removed`            | `<pack>:<action>`         |
+| An action parameter is removed                                                                       | `param-removed`             | `<pack>:<param address>`  |
+| An action parameter's `type` or `of` changes, an enum one loses values, or it becomes required       | `param-type-changed`        | `<pack>:<param address>`  |
+| A situational choice is removed (`unknown-name` in formulas, `unknown-situational` from startAction) | `situational-removed`       | `<pack>:<situational>`    |
+| A situational choice's `type` changes, or an enum one loses values                                   | `situational-type-changed`  | `<pack>:<situational>`    |
+| An open enum stops being open (packs that add to it no longer load)                                  | `enum-closed`               | `<pack>:<enum address>`   |
+| A value or option the pack adds to a dependency's enum or choice is gone                             | `extension-removed`         | `<target>/<value>`        |
+| An existing choice gains or loses `addAs` (its saved picks' copy links no longer fit)                | `choice-copies-changed`     | `<pack>:<owner>/<choice>` |
 
 `checkRelease` lists them in `changes` after the shape changes, in this table's order, then by
-ID. An `extension-removed` ID names the dependency's enum or choice as the extension's key does
+ID. An inline action's ID is its text key root: `<item>.actions.<action>`, or
+`types.<type>.<action>` for a content type's; a `use` entry is named by the used action's ID in
+its place (local when it is the pack's own).
+
+A parameter's address is its text key without `.name`: an action's own
+`actions.<action>.params.<param>`, `<item>.actions.<action>.params.<param>` or
+`types.<type>.<action>.params.<param>` (inline on an item or a content type), and one a `params`
+effect adds ([effects.md](effects.md#targets)) `<content key>.params.<param>`, the content key
+the declaring item's (its choices' and options' effects included), `types.<type>` or `rules`.
+When a declarer's effects declare a name more than once (over tags that don't meet), each
+earlier declaration needs a later one that takes what it took. A parameter is compared only
+while its action, or its declarer, remains (a removed action is `action-removed`). Any change of
+`type` counts, widening `integer` to `decimal` included: a formula that reads it (a dependent
+pack's or homebrew's) may need an integer, such as a dice count. A parameter new on a remaining action that is required (neither
+`optional` nor defaulted) counts as `param-type-changed`, since apps that started the action
+before now fail with `missing-param`. A parameter moved between an action and a `params` effect
+counts as removed, even when an unconditional effect adds it back to that same action.
+
+An `extension-removed` ID names the dependency's enum or choice as the extension's key does
 (`orc-2e:types.weapon.fields.damageType/sonic`), not the pack itself. A `choice-copies-changed` leaves saved picks of the choice without the copy links the
 new release expects (or with links it no longer holds): computing the upgraded character
 reports each as `picked-copy-invalid`, for the player to pick again. Each needs a breaking bump, but no upgrade script: no step can migrate a removed tag, and a
 character's homebrew that uses one is reported by `upgrade`. A step that renames the thing
 (`renameField`, `renameContentType`, `renameItemField`, `mapItemValues`, `renameTag`,
 `renameAction`) migrates homebrew that uses it.
+
+Narrowing a condition or a bound can't be compared statically: a situational choice's
+`available`, `rolls` or `incoming`; an action's or a `use`'s `available`; a `params` effect's
+`when` or `target`; a parameter's `min`, `max` or `where`, or a tag parameter's `members`. Each
+makes calls that worked fail (`situational-unavailable`, `unknown-action`, `out-of-range`,
+`invalid-option`) or drops a parameter from actions that had it, so it is an interface change
+too: the author gives it a breaking bump, which `checkRelease` doesn't check.
 
 ## Upgrade scripts
 
