@@ -51,8 +51,8 @@ const sheet = computeSheet(ruleset, applied.character);
 console.log(en['fields.hp.max.name'], sheet.values['5e-srd-5.1:hp.max']?.value);
 ```
 
-The guided start (`create-character`) pauses for each pick instead; a monster is made with
-`create-monster`. The [quick start](https://opencharacterformat.org/guides/quick-start/) and
+The guided start (`create-character`) asks each pick instead, recommending one, so an automatic
+run finishes too; a monster is made with `create-monster`. The [quick start](https://opencharacterformat.org/guides/quick-start/) and
 the [guides](https://opencharacterformat.org/guides/) explain each call.
 
 ## Scope at a glance
@@ -159,10 +159,15 @@ Where the SRD is unclear or silent, the pack reads it this way:
 
   The standard array is recommended, and each method recommends the scores by the class's
   ability priority (below), the highest to its first ability (point buy at the same spread, 27
-  points). The race, subrace, class and background recommend nothing: they are the player's.
+  points). The race, subrace, class and background recommend the first offered.
 
   Then what the race, class and background bring (a tool, a fighting style, skills, languages,
   a prepared caster's spells, …), one pick at a time; while creating, every pick must be made.
+  Every pick recommends one of the options it offers (`recommend` over `options`), so an
+  automatic run finishes, and a level-up's picks do too: a short list of the SRD's usual picks
+  first (the class's skills, Defense or Archery, a caster's staple spells, Common's neighbors
+  among languages), then the highest-level spell or the first option offered. An Ability Score
+  Improvement recommends +2 to the highest ability that takes it, else +1 to two, else a feat.
   Then the starting equipment: the class's "(a) or (b)" lines, each recommending (a), only the
   proficient options where the SRD says "if proficient", and the background's. Armor, a shield
   and every weapon come equipped; equipment packs come whole (`unpack` adds the contents). Coins
@@ -258,11 +263,15 @@ Where the SRD is unclear or silent, the pack reads it this way:
 - **Follow-ups:** concentration checks, a failed death save from damage at 0 hit points,
   Relentless Rage, Relentless Endurance, Undead Fortitude, Retaliation and the Berserker Axe's
   save, each once per batch of damage; a batch is one attack or spell as the app applies it.
+  When concentration ends, `concentration-ends` ends the caster's concentration spells on every
+  creature holding one (`to: applied`, by the entries' `appliedBy`).
 - **Races and backgrounds:** the nine SRD races, four subraces and ten draconic ancestries, the
   Acolyte and the Grappler feat.
 - **Classes:** all twelve classes and their twelve SRD subclasses, feature by feature. Uses
   until a rest are state on the class copy (an invocation's on its pick, the breath weapon's
-  `used` on the draconic ancestry pick, a racial trait's in its saved grant state); per-roll bonuses are situational choices; lasting
+  `used` on the draconic ancestry pick, a racial trait's in its saved grant state); the draconic
+  ancestry carries its breath weapon's save DC and dice as computed values (`breathDc`,
+  `breathDice`); per-roll bonuses are situational choices; lasting
   effects are boolean inputs; once per turn is the app's. Divine Smite is offered on a melee
   weapon hit (one option per spell slot level left, and the pact slot): it spends the slot and
   adds its radiant dice to the hit's damage roll, doubled on a critical hit.
@@ -272,10 +281,25 @@ Where the SRD is unclear or silent, the pack reads it this way:
   scaling; concentration; 37 spells whose effects apply to their target's sheet, with the option
   picked per cast where the spell offers one (`castOptions`: Protection from Energy's damage
   type, Fire Shield's warm or chill shield, Enhance Ability's effect, Enlarge or Reduce,
-  Blindness or Deafness) read as the applied spell's `option`, and the caster as its `caster`
-  (Hunter's Mark: the caster's weapon hits on a creature whose `huntersMark.markedBy` view
-  holds the caster's ID deal an extra 1d6); racial spells;
+  Blindness or Deafness) read as the applied spell's `option`, and the caster as its
+  `appliedBy` (Hunter's Mark: the caster's weapon hits on a creature whose `huntersMark.markedBy`
+  view holds the caster's ID deal an extra 1d6, and its `move` action ends the caster's mark
+  wherever it is, `to: applied`, and marks the new target); racial spells;
   subclass spells; the wizard's spellbook (a spell only in the book is cast only as a ritual).
+  Each spell the character has carries its numbers as computed values (`castingClass`,
+  `spellDc`, `spellAttack`, `spellMod`, in computeSheet's `activationValues`), which
+  `cast-spell` reads and the spell card shows ("Save DC 14", "Spell attack +6").
+- **Auras:** Aura of Protection (while the paladin is conscious, `aura.range`, reading its live
+  Charisma modifier), Countercharm (30 feet, while the bard performs), the Rod of Alertness's
+  Protective Aura (60 feet, while planted), Pass without Trace (30 feet, cast on the caster) and
+  Spirit Guardians (15 feet, enemies' speed halved; the cast puts the spell on the caster to hold
+  it up) are listed in computeSheet's `auras` for the app to place on whoever is inside. A creature
+  counts one Aura of Protection, Rod or Pass without Trace bonus (stackKey `source`), so the
+  holder inside its own aura, or an ally with an older `ally` entry, isn't counted twice. The
+  `ally` actions stay for apps that don't place auras. Aura of Courage and Aura of Devotion keep
+  their `ally` actions: an aura carries effects only, not immunities. Spirit Guardians' save and
+  damage after the cast (a creature entering or starting its turn there) are the app's: running
+  the cast again would spend another slot.
 - **Equipment:** every SRD weapon and armor, 135 gear items, 7 equipment packs, 35 tools, 8
   mounts and 11 vehicles, with cost (gp) and weight (lb) per unit. Extradimensional containers
   and the Efficient Quiver take what they hold out of carried weight.
@@ -283,7 +307,7 @@ Where the SRD is unclear or silent, the pack reads it this way:
   shields, ammunition and staffs are templates on the mundane item. Charges, daily properties,
   attunement (more than three, or an unmet requirement, is a rules issue), potions, oils and
   dusts, spells cast from items, item powers, on-hit charges, wounds, stored spells and
-  situational advantages are modeled.
+  situational advantages are modeled. A power out of charges or used since dawn isn't offered.
 - **Sheet layout:** display groups for actions and content, with units (feet, pounds, gold
   pieces, miles per hour) and a compact `summary` view.
 
@@ -347,7 +371,7 @@ utility).
 
 - **The app's:** turns and action economy (Cunning Action, Fast Hands, Vanish, Persistent Rage,
   Nimble Escape; once per turn), the clock (durations, dawn, rests, crafting time), space and
-  range (auras, areas, who is within reach), and other character files (summoned creatures,
+  range (who is inside an aura, areas, who is within reach), and other character files (summoned creatures,
   Wild Shape's beast, the vehicles that are creatures). Copying spells and crafting cost gold
   and days, the app's too.
 - **Narrative or the GM's:** both Timeless Bodies, Tongue of the Sun and Moon, Trance, Shelter
@@ -355,6 +379,8 @@ utility).
 - **Metamagic:** what most options change (Twinned Spell's second target, range, duration,
   casting time, components, Careful Spell's creatures) is reported in `data.metamagic` for the
   app.
+- **A spell on two spellcasting lists** (a cleric's spell also known through another class or a
+  feat) is cast, and its card numbered, with the first spellcasting whose list has it.
 - **Monster diseases:** the diseases a monster's attack gives (the diseased giant rat, the
   otyugh) are the attack's text. The hydra's bites per head are text: heads aren't tracked.
 

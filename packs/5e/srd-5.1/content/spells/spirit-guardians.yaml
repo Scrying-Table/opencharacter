@@ -19,3 +19,21 @@ fields:
   upcastDice: 1
 actions:
   - use: cast-spell
+# Casting it puts the spell on the caster too, which holds the aura up: affected creatures in the
+# area have their speed halved. The save and damage after the cast (entering, or starting a turn
+# there) are the app's, as is designating unaffected creatures.
+effects:
+  - target: { steps: [spell.concentrate], from: self }
+    op: changes
+    value:
+      to: self
+      changes:
+        - { type: applyEffect, source: item.id }
+auras:
+  - id: guardians
+    when: countList(character.applied, x.active && x.source == @spells.spirit-guardians
+      && (x.appliedBy == '' || x.appliedBy == character.id)) > 0
+    size: 15
+    affects: enemies
+    effects:
+      - { target: combat.speed, op: multiply, value: 0.5, scope: applied }

@@ -15,8 +15,11 @@ tags:
   - attack.spell.melee
   - attack.spell.ranged
   - spell
+  - spell.cast
+  - spell.concentrate
   - spell.slot-spent
   - spell.target
+  - turn-boundary
   - concentration
   - save.str
   - save.dex
@@ -61,6 +64,7 @@ tags:
   - heroic-inspiration
   - metamagic
   - luck
+  - attack-hit
   - weapon-hit
   - unarmed-hit
   - weapon-damage-type

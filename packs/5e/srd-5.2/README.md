@@ -51,8 +51,8 @@ const sheet = computeSheet(ruleset, applied.character);
 console.log(en['fields.hp.max.name'], sheet.values['5e-srd-5.2:hp.max']?.value);
 ```
 
-The guided start (`standard`) runs the same action and pauses for each pick; a `level` parameter
-starts higher. A monster is made with `create-monster`. The
+The guided start (`standard`) runs the same action and asks each pick, recommending one, so an
+automatic run finishes too; a `level` parameter starts higher. A monster is made with `create-monster`. The
 [quick start](https://opencharacterformat.org/guides/quick-start/) and the
 [guides](https://opencharacterformat.org/guides/) explain each call.
 
@@ -105,7 +105,12 @@ Where the SRD is unclear or silent, the pack reads it this way:
   next.
 - **The guided start** recommends the Standard Array by Class (point buy at the same spread, 27
   points) and every pick the SRD recommends (a Fighting Style, an Epic Boon, Skilled for a human,
-  the class's example weapon masteries).
+  the class's example weapon masteries). Every other pick, at creation and on a level-up,
+  recommends one of the options it offers (`recommend` over `options`): a short list of usual
+  picks first (the class's skills, a caster's staple spells, a few common languages), then the
+  highest-level spell or the first option. Invocations recommend only ones whose level
+  prerequisite the warlock meets. So an automatic run of either start, or of a level-up,
+  finishes.
 - **Starting higher:** the character starts with the minimum experience for the level, and the
   level-up offers take it there one level at a time; levels 5 and up roll the extra gold of the
   Starting Equipment at Higher Levels table. Coins are tracked (`coins.*`), since a starting
@@ -123,8 +128,10 @@ Where the SRD is unclear or silent, the pack reads it this way:
   Paralyzed or Unconscious target's automatic Critical Hits likewise.
 - **Weapon mastery** is offered after the attack roll (recommended). Sap ends with the target's
   next attack roll (one where Advantage cancels its Disadvantage included), Vex with the
-  attacker's next attack roll against that target, and two Slows don't stack; their other timing is
-  the app's. Push and Cleave are reported in the outcome (`push`,
+  attacker's next attack roll against that target, and two Slows don't stack. The target's entry
+  records the attacker (`appliedBy`), and the `turn-boundary` clock action, which the app runs on
+  every creature at each turn change, ends Sap and Slow when the attacker's next turn starts and
+  Vex (and Studied Attacks' Advantage) when it ends. Push and Cleave are reported in the outcome (`push`,
   `cleave`) for the app to resolve; Cleave's attack runs the weapon's attack with `cleave` set.
 - **Grapple and Shove:** the target saves with the better of Strength and Dexterity (its
   player's choice).
@@ -142,7 +149,10 @@ Where the SRD is unclear or silent, the pack reads it this way:
   level 5 spell a level 2 one for its free casts.
 - **Class features:**
   - Rage Damage, Reckless Attack and Brutal Strike count any attack using Strength, thrown
-    weapons and Unarmed Strikes included.
+    weapons and Unarmed Strikes included. A Brutal Strike's blow is a parameter of the attack
+    (`brutalBlow`; from level 13 `improvedBlow`, which adds Staggering and Sundering Blow; and
+    `brutalBlow2` at level 17), applied on the hit: Hamstring and Staggering Blow put their
+    effect on the target; Forceful Blow's push and Sundering Blow's +5 are the player's.
   - Persistent Rage, Perfect Focus, Superior Inspiration, Evergreen Wild Shape and Boon of Fate
     act when Initiative is rolled (a hook on the `initiative` action); Uncanny Metabolism is its
     own action, since it rolls.
@@ -172,13 +182,14 @@ Where the SRD is unclear or silent, the pack reads it this way:
 - **Spells:**
   - A spell's option (Hex's ability, Fire Shield's warmth, a resistance's type) is picked at the
     cast for each target, so Calm Emotions and an upcast Enhance Ability can differ per creature,
-    and is kept on the applied spell. Only Alter Self's can be replaced later.
+    and is kept on the applied spell. Only Alter Self's can be replaced later, and Hex's when the
+    curse moves.
   - Enlarge/Reduce: only an unwilling target saves.
   - Black Tentacles' 3d6 is on a failed save only; a spell whose area is a wall or a square has
     no area shape.
-  - Conjure Fey, Chromatic Orb, Eldritch Blast's later beams, Scorching Ray's rays, Magic
-    Missile's darts and other repeated effects are their own actions on the spell; the cast is the
-    first.
+  - Conjure Fey, Chromatic Orb's leaps, Eldritch Blast's later beams, Scorching Ray's rays,
+    Magic Missile's darts and other repeated effects are their own actions on the spell; the cast
+    is the first. Chromatic Orb's type is a parameter the spell adds to its cast (`damageType`).
   - Death Ward ends when it saves its target: on the first damage that, before resistances,
     would drop the target to 0 Hit Points. Oil's extra fire damage ends with the first fire
     damage; Hypnotic Pattern and Eyebite's Asleep end on any damage.
@@ -187,7 +198,10 @@ Where the SRD is unclear or silent, the pack reads it this way:
   - A smite is an option on a hit with a melee weapon or an Unarmed Strike: picking it casts the
     spell (the slot level asked on the attack) and adds its damage to the attack's, doubled on a
     Critical Hit. Hex's and Hunter's Mark's extra damage joins the caster's attack damage when the
-    target's view names the caster (`hex.cursedBy`, `huntersMark.markedBy`), and Precise Hunter's
+    target's view names the caster (`hex.cursedBy`, `huntersMark.markedBy`: the applied spell's
+    `appliedBy`), and each spell's `move` action ends the caster's curse or mark wherever it is
+    (`to: applied`) and puts it on the new target; whether the old target dropped to 0 Hit Points
+    is the player's. Precise Hunter's
     Advantage applies against a target so marked (its `preciseHunter` situational choice stays for
     an attack without the target's view). Divine Favor doesn't add to Unarmed Strikes.
   - Power Word Kill and Power Word Stun read the target's current Hit Points from its view
@@ -197,9 +211,10 @@ Where the SRD is unclear or silent, the pack reads it this way:
     until a weapon is named.
   - Telekinesis is cut off mid-sentence in the SRD 5.2.1; its text is finished with the SRD
     5.1's sentence.
-- **Magic items:** "once per dawn" is tracked per item and reset by the `dawn` action; starting
-  charges the SRD rolls start at the maximum; magic weapons, armor and shields are templates on
-  the mundane item. The dwarf requirement is the Dwarf species.
+- **Magic items:** "once per dawn" is tracked per item and reset by the `dawn` action, and a
+  power used since dawn or out of charges isn't offered; starting charges the SRD rolls start at
+  the maximum; magic weapons, armor and shields are templates on the mundane item. The
+  dwarf requirement is the Dwarf species.
 - **Monsters:** stat block numbers (to hit, damage, DC, AC, Initiative) are as printed, not
   recomputed; where a printed number doesn't follow from the scores (the Gray Ooze's Initiative
   score, a few skills), an effect makes up the difference. Mind Blank is assumed cast before combat.
@@ -250,8 +265,8 @@ Where the SRD is unclear or silent, the pack reads it this way:
   conditions and defenses from its view and send damage to it split by type, tagged for its
   resistances and reactions. `take-damage`, `heal`, `gain-temporary-hit-points`, `fall`.
 - **Conditions:** the fourteen SRD conditions as applied content (Incapacitated ends
-  Concentration); Exhaustion as a field. Weapon mastery effects on a target are applied content
-  too.
+  Concentration); Exhaustion as a field. Weapon mastery effects and Brutal Strike's Hamstring and
+  Staggering Blows on a target are applied content too.
 - **Resting:** `short-rest`, `long-rest` (all hit points and Hit Point Dice, slots, Exhaustion −1),
   `spend-hit-die`, `death-save`, and every feature's recharge, hooked to the rest.
 - **Species, backgrounds and feats:** the nine species with their 24 lineages and ancestries
@@ -263,20 +278,39 @@ Where the SRD is unclear or silent, the pack reads it this way:
   Hands and smites, Favored Enemy, Sneak Attack and Cunning Strike, Font of Magic and the ten
   Metamagic options, Pact Magic and the 28 invocations, the spellbook, Arcane Recovery. Uses until
   a rest are state on the class copy, an invocation's on its pick (Gift of the Depths' `used`).
+  Features carry the numbers their card needs as computed values (in computeSheet's
+  `activationValues`), which their actions read: Cunning Strike's `strikeDc`, Intimidating
+  Presence's `presenceDc`, Relentless Rage's `rageDc`, Sacred Weapon's `weaponBonus`, Preserve
+  Life's `healingPool`, and Breath Weapon's `breathDc` and `breathDice`.
   A species trait keeps its own uses as its grant's saved state (Breath Weapon, Draconic Flight,
   Stonecunning, the lineage spells, Giant Ancestry, Large Form, Adrenaline Rush, Relentless
   Endurance); Stone's Endurance spends a Giant Ancestry use from its incoming-damage effect's
-  `then`, and is offered while one is left. Retaliation offers each melee weapon's attack, and
-  an Unarmed Strike, as follow-ups when the barbarian takes damage and stays up. Deflect Attacks
-  is a situational choice on an incoming attack (`deflectAttacks`): the damage change it is
-  selected on, if Bludgeoning, Piercing or Slashing (any type with Deflect Energy), is reduced by
-  1d10 plus the Dexterity modifier and Monk level, never below 0; the `deflect-attacks` action
-  still redirects the force.
+  `then`, and is offered while one is left. Fire's Burn, Frost's Chill and Hill's Tumble are
+  options on a weapon or Unarmed Strike hit: their dice join the hit's damage roll (doubled on a
+  Critical Hit), and the use is spent with the damage; their own actions stay for other attack
+  rolls. Retaliation offers each melee weapon's attack, and an Unarmed Strike, as follow-ups
+  when the barbarian takes damage and stays up. Deflect Attacks is a situational choice on an
+  incoming attack (`deflectAttacks`): the damage change it is selected on, if Bludgeoning,
+  Piercing or Slashing (any type with Deflect Energy), is reduced by 1d10 plus the Dexterity
+  modifier and Monk level, never below 0; the `deflect-attacks` action still redirects the force.
 - **Spellcasting:** each class's cantrips and prepared spells (the table's counts), always-
   prepared subclass spells, the Multiclass Spellcaster slots, Pact Magic, the wizard's spellbook
   and Ritual Adept, Magic Initiate and species spells with their own ability, `cast-spell` with
-  upcasting and cantrip upgrades, Concentration (checks at DC 10 or half the damage, up to 30),
-  196 of the 339 spells with mechanics beyond spending the slot.
+  upcasting and cantrip upgrades, Concentration (checks at DC 10 or half the damage, up to 30;
+  when it ends, the `concentration-ends` follow-up ends the caster's concentration spells on every
+  creature holding one, `to: applied`),
+  196 of the 339 spells with mechanics beyond spending the slot. Each spell the character has
+  carries its numbers as computed values (`castingClass`, `spellDc`, `spellAttack`, `spellMod`,
+  in computeSheet's `activationValues`), which `cast-spell`, `spell-effect` and the spells' own
+  actions read.
+- **Auras:** Aura of Protection (allies in `paladin.auraRange`, down while the paladin is
+  Incapacitated, reading its live Charisma modifier), the Rod of Alertness's Protective Aura (60
+  feet, while planted), Aura of Life, Holy Aura and Pass without Trace (cast with no target, on
+  the caster), and Spirit Guardians (15 feet, enemies' Speed halved; the cast puts the spell on
+  the caster to hold it up, and its `guard` action, like Moonbeam's `beam`, runs the save and
+  damage at the caster's spell save DC without a slot) are listed in computeSheet's `auras` for the app to place on whoever
+  is inside. A creature in two Auras of Protection benefits from the highest (stackKey `source`),
+  and the holder inside its own aura counts it once.
 - **Equipment:** 38 weapons with their properties and mastery, 13 armors, 37 tools, 96 pieces of
   gear (ammunition, spellcasting focuses, equipment packs that `unpack`, thrown flasks, the
   Healer's Kit, Antitoxin, Basic Poison), 8 mounts, 12 vehicles and 100 trinkets, with cost (GP)
@@ -356,9 +390,16 @@ as text are listed below.
 - **The app's:** turns, action economy and once-per-turn limits (Cunning Action, Instinctive
   Pounce, Tactical Shift, Nick, Fast Hands, Steady Aim, Thief's Reflexes, Bonus Action attacks),
   durations and round-by-round effects (Rage's extension, repeated saves, damage each turn,
-  Sacred Weapon's and Holy Nimbus's timers kept as toggles), space and movement (auras for
-  allies, pushes, teleports, areas, walls, Halfling Nimbleness), and other characters' sheets
-  (summoned creatures, familiars, mounts and steeds, Wild Shape's beast, allies in an aura).
+  Sacred Weapon's and Holy Nimbus's timers kept as toggles), space and movement (who is inside
+  an aura, pushes, teleports, areas, walls, Halfling Nimbleness), and other characters' sheets
+  (summoned creatures, familiars, mounts and steeds, Wild Shape's beast).
+- **A spell on two spellcasting lists** (a cleric's spell also known through another class or a
+  feat) is cast, and its card numbered, with the first spellcasting whose list has it.
+- **Aura parts that stay text:** Aura of Courage's and Aura of Devotion's immunity for allies
+  (an aura carries effects, not immunities; the paladin's own holds), Smite of Protection's Half
+  Cover, when Spirit Guardians' `guard` runs (once per turn per creature) and its unaffected
+  creatures, Aura of Life's Hit Point maximum and its 1 Hit Point at turn start, and
+  Holy Aura's blinding save.
 - **Spells left as text, by kind:** detection and divination, illusions, summoning and creation,
   movement and travel, wards and areas, utility, raising the dead, and spells that remake a weapon
   or a form (Shillelagh, True Strike, Shapechange). Also text: extra targets and longer durations
