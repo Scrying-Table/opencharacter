@@ -41,7 +41,7 @@ shape, an optional **dice function**.
    listing. Each declared parameter takes the app's value, then, for the run the app starts
    (not one an `action` step runs), each one content adds through a `params` effect
    ([effects.md](effects.md#targets)): its IDs resolve in the effect's pack and its `min` and
-   `max` see the effect's roots (as its `when`). A `use` that fixes a parameter, an added one
+   `max` see the effect's roots (as its `when`) and `params`. A `use` that fixes a parameter, an added one
    included, wins over the app's value; its formula is evaluated in the pack that writes the
    use, with the listing's `item` and `self`. Missing required parameters are `missing-param`; wrong types are
    `wrong-type`. Every parameter error (`missing-param`, `wrong-type`, `out-of-range`,
@@ -53,8 +53,15 @@ shape, an optional **dice function**.
    - A number parameter (`integer`, `decimal`) outside its `min`/`max`, once a `use`'s fixed
      value or the default is in, is `out-of-range` (data: `target`, the parameter's name, and the
      evaluated `min` and `max`). The bounds are number formulas evaluated here, as the action
-     starts: they see the action's `item` and `self`, `situational` and the character's fields,
-     but no `params`, `steps` or `flags` (`amount: { type: integer, min: 1, max: effort.free }`).
+     starts, once every parameter (the action's own, then the added ones) has its value: they see
+     the action's `item` and `self`, `situational`, the character's fields and `params`, every
+     parameter as the action's formulas will read it, but no `steps` or `flags`
+     (`amount: { type: integer, min: 1, max: effort.free }`,
+     `recoveries: { max: params.spend }`). An optional parameter left out is absent, so a bound
+     reads it behind `has()` (`max: 'has(params.cap) ? params.cap : 10'`). Every parameter's
+     missing, type and option errors come first, as each takes its value; then the bounds are
+     checked in order, the first out of range failing the action. A bound reads values, never
+     another bound, so bounds that read each other can't loop.
    - A **field parameter** (`type: id, of: field`) takes a field ID, qualified or local to the
      action's pack. A field outside its `where` set is `invalid-option`. Formulas see
      `params.<name>` as `{ id, type, tags, value }`: the field view its `where` sees (the qualified
@@ -101,7 +108,8 @@ The **context** of a formula in an action:
 - `situational`;
 - `participants.<role>`, and in an `each` step `participant`;
 - `steps.<id>`: results of earlier steps;
-- `flags.<name>`: set by branches and by picked choice options.
+- `flags.<name>`: set by branches and by picked choice options;
+- `run`: in an `action` effect's changes, the outcome of the action it ran ([Other steps](#other-steps)).
 
 Fields, `character`, `item` and `self` are read from the step's sheet: the character as given,
 or the proposed sheet (below).
@@ -535,8 +543,8 @@ it in a flag before the roll.
     `{ formula }` for applyChanges to evaluate with `item` the source's item, the receiving
     character's fields and `batch` ([engine-core.md](engine-core.md#what-the-batch-did));
   - a formula passed on (`copies.where`, `applied.where`, a `by` or `value` that reads `self`, `item` or `batch`, and an `applyEffect` state value that reads `batch`) may
-    read fields, `self`, `item` and `character`, and also `steps`, `flags`, `params` and
-    `action`. Those four are substituted now: each
+    read fields, `self`, `item` and `character`, and also `steps`, `flags`, `params`,
+    `action` and (in an `action` effect's changes) `run`. Those are substituted now: each
     maximal name or member path rooted at one of them (index expressions inside the path included) is evaluated in the
     action and replaced by its value as a literal, and `has(<such path>)` by `true` or `false`.
     The tree is then printed back with the standard printer: strings quoted, lists as list
@@ -604,7 +612,7 @@ it in a flag before the roll.
 
 - **Changes content adds**: a changes step's `tags` (computed entries
   evaluated when it runs, with the tags `action` steps running the action add after them, as for
-  roll and choice steps) are matched by content's `changes` effects
+  roll and choice steps) are matched by content's `changes` and `action` effects
   (`target: { steps: [<tag>], from? }`, [effects.md](effects.md#targets)). The step runs in this
   order:
   1. Its `release`, if any.
@@ -620,6 +628,21 @@ it in a flag before the roll.
   3. The changes of those with `order: before`, in instance order.
   4. The step's own `changes`, their `when`s seeing the flags step 2 set.
   5. The changes of the others (`order: after`, the default), in instance order.
+  6. Each active `action` effect matching as in 2, in instance order. Per run (per participant
+     of its `each`; in an `each` step, the current participant's; else once), when its `when`
+     holds (`participant` bound per participant) and no earlier effect with the same ID
+     `<content id>#<id>` ran at that path (an effect whose `when` is false there takes nothing,
+     so a later one with the ID may run), it runs `use` as an `action` step with `params` and `participants`
+     evaluated in the effect's context, at `<step path>/<content id>#<id>`, `[<i>]` added per
+     participant of its `each` (`hit/5e-srd-5.2:features.monk.stunning-strike#stun[0]`). Without
+     `as` it runs on the actor with the action's own entry, source and situational choices, its
+     log entries and proposed changes nested under that path; with `as: participant` it is a
+     [handoff](#handoffs) at that path, to the current participant (none is `unknown-role`, data:
+     `step`, the effect's ID, and `pack`; so is an `each` naming a role other than the `each`
+     step's). Then the value's `changes` are resolved as an instance's in 5, at the step's path,
+     with the run's outcome as `run`: `{ result?, data }`, as an `action` step's result. The run
+     is no step of the action: `steps` doesn't hold it. A used action whose own steps the effect
+     reaches again runs it again, up to `maxActionDepth`.
 
   Each instance's changes go `to` its value's `to`, else the step's. Its formulas see what
   an added option's see: `item` and `self` the content carrying the effect (`entry: self` its
@@ -758,7 +781,9 @@ participant as the case's steps' are.
 ## Handoffs
 
 An `action` step with `each: <role>` and `as: participant` is **handed off**: the
-participant runs the used action on its own character, and the engine doesn't run it.
+participant runs the used action on its own character, and the engine doesn't run it. So is an
+`action` effect's run with `as: participant` ([Other steps](#other-steps)), the same way, at its
+own path, its outcome its changes' `run`.
 
 1. Its `params` are evaluated in the actor's context. The used action (`use`, qualified at
    load) must exist in the ruleset (`unknown-action`), and types them: a missing required one

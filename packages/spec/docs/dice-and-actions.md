@@ -121,8 +121,24 @@ chooses its damage type on each use, and a feature adds an opt-in to a rules act
   (startAction, a follow-up taken up, a handoff's run on its own character) has it: an `action`
   step's nested run doesn't. A required one is the load error `invalid-added-param`.
 - Its `min` and `max` see the effect's roots, as its `when` (`item` and `self` the content's,
-  the listing's as `action.item` and `action.self`); a content parameter's `where` sees the
-  candidate as `item` and the listing's as `action`, as an action's own does.
+  the listing's as `action.item` and `action.self`), and the action's `params`; a content
+  parameter's `where` sees the candidate as `item` and the listing's as `action`, as an action's
+  own does.
+- Bounds, an action's own and added ones alike, are checked once every parameter has its value
+  (the app's, a `use`'s fixed one, or the default), so one parameter bounds another. A bound reads
+  values, never another bound, so bounds that read each other can't loop. An optional parameter
+  left out is absent: read it behind `has()` (`has(params.cap) ? params.cap : 10`). Healing Grace spends
+  one piety per enhancement:
+
+  ```yaml
+  - target: { actions: [ability], from: self }
+    op: params
+    value:
+      graceRecoveries:
+        { type: integer, default: 0, min: 0, max: 'params.spend - (params.graceStand ? 1 : 0)' }
+      graceStand: { type: boolean, default: false }
+  ```
+
 - A `use` may fix an added parameter in its `params`, as its own.
 - A name an action its literal target tags reach already declares, or one another `params`
   effect adds with another declaration, is `invalid-added-param` at load. An action counts by the
@@ -853,6 +869,36 @@ counts before the step's own spending clamps the field.
   value:
     order: before
     changes: [{ type: adjust, field: surges.current, by: 1 }]
+```
+
+**Actions content runs**. An `action` effect aimed at a tagged changes step runs a rules action
+there, as an `action` step would, after the step's own changes and those `changes` effects add,
+whenever the step runs and its `when` holds. Its value is `{ id, use, params?, participants?,
+each?, as?, changes?, to? }`: `use` runs with `params` evaluated in the effect's context (the
+content's `item` and `self`, the action's `params`, `flags`, `steps`, `participants`), per
+participant of `each` (in an `each` step, for its current participant), and with
+`as: participant` the participant runs it on their own sheet (a handoff). Its `changes` follow
+and read the run's outcome as `run`. Each effect runs its own action, so a hit carries one saving
+throw per feature, each at its own DC. The run's path is `<step path>/<content id>#<id>`
+(`[<i>]` per participant), where policies and replay find it
+([engine-actions.md](engine-actions.md#other-steps)).
+
+```yaml
+# content/features/monk/stunning-strike.yaml: a Constitution save or Stunned on a hit.
+effects:
+  - target: { steps: [attack-hit] }
+    op: action
+    when: params.stunningStrike
+    value:
+      id: stun
+      use: saving-throw
+      each: target
+      as: participant
+      params: { ability: "'con'", dc: focus.saveDc }
+      changes:
+        - type: applyEffect
+          when: has(run.result) && run.result == 'failure'
+          source: "'conditions.stunned'"
 ```
 
 **Rolled amounts.** A proposed change's `by` (an `adjust`, `adjustState` or `adjustQuantity`)

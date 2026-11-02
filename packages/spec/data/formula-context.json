@@ -41,7 +41,7 @@
     },
     {
       "id": "params",
-      "description": "In a template's item field values: the template's `params`, as the content keeping it gave them (`keepsTemplates` `params`), each declared default where none was given. In an action: parameters the app supplied. A field parameter (`type: id, of: field`) is `{ id, type, tags, value }`: the field's qualified ID, type, tags on the sheet (written and computed; `[]` if none) and computed value. Substituted as literals in a formula a proposed change passes on."
+      "description": "In a template's item field values: the template's `params`, as the content keeping it gave them (`keepsTemplates` `params`), each declared default where none was given. In an action: parameters the app supplied. Also in a parameter's `min` and `max` (an action's own, or one a `params` effect adds), evaluated once every parameter has its value. A field parameter (`type: id, of: field`) is `{ id, type, tags, value }`: the field's qualified ID, type, tags on the sheet (written and computed; `[]` if none) and computed value. Substituted as literals in a formula a proposed change passes on."
     },
     {
       "id": "participants",
@@ -62,6 +62,10 @@
     {
       "id": "picked",
       "description": "In a choice step's `changes` and its options' `changes` and `flags`: the pick they follow: `picked.id` (the option ID), plus `picked.item` (the item view) over content and copies, and `picked.self` (the copy) over copies, and `picked.value` (the value itself, `picked.id` its string form) over values. Over pending choices, `picked.id` and `picked.path`, the choice path."
+    },
+    {
+      "id": "run",
+      "description": "In an `action` effect's `changes`: the outcome of the action the effect ran at the step, as an `action` step's result: `run.result` (absent when the action finished without one) and `run.data`; per participant, the current participant's run. Substituted as literals in a formula a proposed change passes on."
     },
     {
       "id": "options",

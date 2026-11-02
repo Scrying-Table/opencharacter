@@ -31,6 +31,7 @@ import type {
   InlineOption,
   KeptTemplate,
   OptionValue,
+  StepAction,
   StepChanges,
   ProposedChange,
   Query,
@@ -67,6 +68,7 @@ import {
   BATCH,
   FIELD_ITEM,
   PARTICIPANT_LIST,
+  RUN,
   PENDING_CHOICE,
   OWN_CHOICE,
   formulaTree,
@@ -775,12 +777,29 @@ class FormulaChecker<L> {
       for (const [name, formula] of Object.entries(value.flags ?? {}))
         this.optionFlag(tags, 'changes', name, formula, at, label);
       for (const change of value.changes ?? []) this.proposedChange(change, at, label);
+    } else if (effect.op === 'action') {
+      // The run's parameters and participants see the effect's context; its changes the run too.
+      const value = effect.value as StepAction;
+      for (const formula of Object.values(value.params ?? {}))
+        this.formula(formula, at, label, ANY, true);
+      for (const formula of Object.values(value.participants ?? {}))
+        this.formula(formula, at, label, PARTICIPANT_LIST);
+      this.typed({ run: RUN }, () =>
+        this.withRoots(['run'], () => {
+          for (const change of value.changes ?? []) this.proposedChange(change, at, label);
+        }),
+      );
     } else if (effect.op === 'params') {
-      // Bounds see the effect's roots, as its `when`; a `where` sees what an action's own does.
+      // Bounds see the effect's roots, as its `when`, and the action's `params`; a `where` sees
+      // what an action's own does.
       for (const [name, decl] of Object.entries(effect.value as Record<string, ValueDecl>)) {
         const place = `${label} param ${name}`;
-        this.formula(decl.min, at, `${place} min`, NUMBER);
-        this.formula(decl.max, at, `${place} max`, NUMBER);
+        this.typed({ params: 'dyn' }, () =>
+          this.withRoots(['params'], () => {
+            this.formula(decl.min, at, `${place} min`, NUMBER);
+            this.formula(decl.max, at, `${place} max`, NUMBER);
+          }),
+        );
         if (decl.where === undefined || decl.type !== 'id' || decl.of === undefined) continue;
         if (decl.of === 'field') this.query({ type: 'field', where: decl.where }, at, place);
         else if (decl.of !== 'tag' && decl.of !== 'string')
@@ -1015,15 +1034,18 @@ class FormulaChecker<L> {
         ),
       );
     }
-    // Parameter bounds are evaluated as the action starts: no steps, flags or params yet.
+    // Parameter bounds are evaluated as the action starts, once every parameter has its value:
+    // `params`, but no steps or flags yet.
     for (const [name, decl] of Object.entries(action.params ?? {}))
-      this.typed({ ...own, situational: types.situational as FType }, () =>
-        this.at('content', () =>
-          this.onlyRoots(['situational'], () => {
-            this.formula(decl.min, at, `${key} param ${name} min`, NUMBER);
-            this.formula(decl.max, at, `${key} param ${name} max`, NUMBER);
-          }),
-        ),
+      this.typed(
+        { ...own, situational: types.situational as FType, params: types.params as FType },
+        () =>
+          this.at('content', () =>
+            this.onlyRoots(['situational', 'params'], () => {
+              this.formula(decl.min, at, `${key} param ${name} min`, NUMBER);
+              this.formula(decl.max, at, `${key} param ${name} max`, NUMBER);
+            }),
+          ),
       );
     this.typed(types, () => this.actionBody(action, at, key, each));
   }
@@ -1416,7 +1438,7 @@ class FormulaChecker<L> {
       // literals, so a path to a map is a type mismatch. No other action root is passed on.
       this.typed({ item: this.itemOf(def), self: selfType(def), batch: BATCH }, () =>
         this.at('content', () =>
-          this.onlyRoots([...PASSED_ROOTS, ...this.inEach(), 'batch'], () => {
+          this.onlyRoots([...PASSED_ROOTS, ...this.inEach(), ...this.inRun(), 'batch'], () => {
             this.passedOn(change.copies?.where, at, where, BOOL);
             if (perCopy(change.value)) this.passedOn(change.value, at, where, value);
             if (perCopy(change.by)) this.passedOn(change.by, at, where, by);
@@ -1424,12 +1446,12 @@ class FormulaChecker<L> {
         ),
       );
     }
-    this.appliedContent(change, at, where, [...PASSED_ROOTS, ...this.inEach()]);
+    this.appliedContent(change, at, where, [...PASSED_ROOTS, ...this.inEach(), ...this.inRun()]);
     const applied = change.applied ?? change.picks ?? change.grants;
     if (applied) {
       this.typed({ item: 'dyn', self: entryType(undefined), batch: BATCH }, () =>
         this.at('content', () =>
-          this.onlyRoots([...PASSED_ROOTS, ...this.inEach(), 'batch'], () => {
+          this.onlyRoots([...PASSED_ROOTS, ...this.inEach(), ...this.inRun(), 'batch'], () => {
             this.passedOn(applied.where, at, where, BOOL);
             if (change.value !== undefined && readsCopy(change.value))
               this.passedOn(change.value, at, where, value);
@@ -1509,6 +1531,11 @@ class FormulaChecker<L> {
 
   private inEach(): string[] {
     return this.extraRoots.includes('participant') ? ['participant'] : [];
+  }
+
+  /** An `action` effect's changes pass on `run` too, substituted as the action's roots are. */
+  private inRun(): string[] {
+    return this.extraRoots.includes('run') ? ['run'] : [];
   }
 
   private onlyRoots<T>(roots: string[], fn: () => T): T {
@@ -1889,7 +1916,10 @@ class FormulaChecker<L> {
       if (type.ok && !hasLiteral(type.value)) maps.push(print(path));
       return path;
     };
-    replaceRooted(tree.value, new Set(PASSED_ROOTS), { path: visitPath, has: (path) => path });
+    replaceRooted(tree.value, new Set([...PASSED_ROOTS, ...this.inRun()]), {
+      path: visitPath,
+      has: (path) => path,
+    });
     for (const path of maps) {
       this.problems.push({
         at,
