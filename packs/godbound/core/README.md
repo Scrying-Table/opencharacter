@@ -16,7 +16,7 @@ Edition, used with the author's permission; nothing comes from the deluxe editio
 pnpm add @opencharacter/godbound-core @opencharacter/engine
 ```
 
-This release needs spec 0.3: `@opencharacter/engine` 0.3.0 or later. An engine for an older
+This release needs spec 0.4: `@opencharacter/engine` 0.4.0 or later. An engine for an older
 spec refuses it (`spec-version-unsupported`).
 
 The package's default export is the pack's release, ready for `loadRuleset`; its English text is
@@ -103,8 +103,17 @@ computeSheet(ruleset, made.character).values['godbound-core:effort.max']?.value;
   - Numeric effects are modeled: natural AC 3, +1 Effort, +2 Influence, Excellence's 18, +2 hit
     points per level, +1 monthly Dominion, damage reduction, minimum weapon dice (1d10, 1d12 for
     two-handed, 1d10+1), always-maximum damage and Fray, rerolled 1s.
-  - Gifts that are weapons have an `attack`; damaging gifts a `gift-blast` (on the damage chart,
-    straight, or against a Mob); healing gifts a `gift-heal`.
+  - Gifts that are weapons have an `attack` (one held while active only while its Effort is
+    committed); damaging gifts a `gift-blast` (on the damage chart or straight; a gift with Mob
+    damage adds a `mob` parameter to its own); healing gifts a `gift-heal`.
+  - A gift's card (`types.gift.block`) shows the hero's damage, Mob damage and healing dice at
+    the hero's level, from its computed `damage`, `mobDamage` and `healing` (dice notation, empty
+    when the gift has none), on copies and on the gifts Apotheosis and artifacts grant.
+  - Unerring Blade and Surge of Strength add a parameter to `attack` (melee attacks, and attacks
+    Strength can modify) that commits the scene's Effort: Unerring Blade hits on anything but a
+    natural 1 and maximizes the damage, Surge of Strength maximizes it. Asked together with Effort
+    for only one, just one of them applies. While Rain of Sorrow is held, a ranged attack offers
+    `mob`: against a Mob, the damage is read straight plus the level.
   - Gift points: six, plus two per level. A lesser gift of a bound Word costs 1, a greater 2, a
     lesser gift of another Word 2 (1 once that Word is bound), a universal gift 1 (Effort of the
     Word 2 after the first), each Word past three 3. `gifts.points.spent` works it out from the
@@ -120,13 +129,19 @@ computeSheet(ruleset, made.character).values['godbound-core:effort.max']?.value;
   level), attack bonus (the level), armor class (the better of natural and worn armor, less
   Dexterity, never worse than 9), saves (16 minus level minus the better modifier, plus 4 for each
   save armor hinders), the 1d8 Fray die.
-  - `attack` rolls d20 + attack bonus + attribute modifier, a hit when it plus the target's AC
-    reaches 20 (natural 20 hits, natural 1 misses). Damage is read on the damage chart die by die,
+  - `attack` (with an equipped weapon, unarmed, or a gift or Word that is a weapon) rolls d20 +
+    attack bonus + attribute modifier, a hit when it plus the target's AC reaches 20 (natural 20
+    hits, natural 1 misses). Damage is read on the damage chart die by die,
     with the modifier on the die it helps most, or straight.
   - `saving-throw` and `attribute-check` roll d20 against the target; a failed save may commit a
     day's Effort to succeed.
   - `divine-fury` at zero hit points, once a level: half the hit points back and bonus Effort equal
-    to the level until `end-fury`.
+    to the level for as many rounds as the level (`fury.rounds`). The app's `turn-boundary`
+    clock action counts a round off as each of the hero's turns ends, and ends the fury after
+    the last; `end-fury` ends it early. A fury saved without rounds left (`fury.rounds` 0) waits
+    for `end-fury`.
+  - Burning Vitality, used on the hero, heals a hit point as each of the hero's turns ends,
+    until at full health.
 - **Advancement:** the experience and Dominion-spent table to level 10; the `level-up` follow-up
   and action add the level, renew divine fury and spend or save the two new gift points (or bind a
   Word for three).
@@ -158,8 +173,12 @@ gift names its Word in `word`).
   `mythic` added to `godbound-core:types.armor.fields.weight` is
   `types.armor.fields.weight.values.mythic.name: Mythic` (through `enumOrigins`).
 - **Tagged steps** take an add-on's rules-level `changes` effects: `creation.finish` (the last
-  step of creation), `level.gain` (each new level), `rest.scene` (the end of a scene) and
-  `rest.day` (a new day).
+  step of creation), `level.gain` (each new level), `rest.scene` (the end of a scene),
+  `rest.day` (a new day), `attack.boost` (before an attack's roll: a gift's `changes` effect
+  sets its flags `maximize`, `straight` and `sure`, a hit unless a natural 1, and adds 1 to
+  `boosts`, the scene's Effort committed), `gift.commit` (a `gift-blast` committing its Effort: `mob` is
+  the flag for Mob damage), `gift.invoke` (`invoke-gift` committing its Effort) and
+  `turn.boundary` (each turn change).
 
 Still closed, as the rules' own: a weapon's or gift's `attribute`, the saves, a gift's
 `activation`, `commit` and `degree`, an invocation's `tier` and a tradition's `casting`.

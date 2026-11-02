@@ -47,6 +47,7 @@ tags:
   - save.luck
   - attack.melee
   - attack.ranged
+  - attack.begin
   - damage
   - hit-points
   - advancement

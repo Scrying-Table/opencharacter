@@ -48,6 +48,8 @@ tags:
   - attack.attribute
   - attack.skill
   - attack.burst
+  - attack.options
+  - attack.rolled
   - damage.melee
   - damage.ranged
   - damage.attribute
@@ -78,6 +80,9 @@ tags:
   - hacking
   - magic
   - spell
+  - spell.commit
+  - spell.effort
+  - spell.cast
   - summoning
   - rest
   - rest.night

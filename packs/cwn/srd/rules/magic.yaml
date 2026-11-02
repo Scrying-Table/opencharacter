@@ -15,6 +15,19 @@ contentTypes:
         required: true
     state:
       prepared: { type: boolean, default: false }
+      # Casts this scene, for spells that cost more after the first.
+      sceneCasts: { type: integer, default: 0, min: 0 }
+    effects:
+      # A spell Committing for the scene or the day lets the caster pick on each cast.
+      - target: { actions: [spell], from: self }
+        op: params
+        when: item.effort == 'either'
+        value:
+          commit: { type: enum, values: [scene, day], optional: true }
+      - target: { steps: [spell.commit], from: self }
+        op: changes
+        when: has(params.commit)
+        value: { flags: { commit: params.commit } }
     actions:
       - use: cast-spell
 
@@ -142,8 +155,6 @@ actions:
     tags: [magic, spell]
     available: magic.mage && self.prepared
     params:
-      # For spells Committing for the scene or the day.
-      commit: { type: enum, values: [scene, day], optional: true }
       overcast: { type: boolean, default: false }
     results: [cast, overcast]
     steps:
@@ -151,12 +162,12 @@ actions:
         kind: branch
         cases:
           - when: true
-            flags:
-              commit: >-
-                item.effort == 'either' ? (has(params.commit) ? params.commit : 'scene')
-                  : item.effort
+            flags: { commit: "item.effort == 'either' ? 'scene' : item.effort" }
+      # The spell's own `commit` parameter, where it has one.
+      - { id: choose, kind: changes, tags: [spell.commit] }
       - id: effort
         kind: changes
+        tags: [spell.effort]
         when: "!params.overcast && flags.commit != 'none'"
         changes:
           - { type: adjust, when: "flags.commit == 'scene'", field: effort.mage.scene, by: 1 }
@@ -183,6 +194,12 @@ actions:
             when: steps.overcasting.band == 'mortal'
             field: hp.current
             value: 0
+      # The cast counts toward the scene's; a spell adds its own cost here.
+      - id: cast
+        kind: changes
+        tags: [spell.cast]
+        changes:
+          - { type: adjustState, entry: self, key: sceneCasts, by: 1 }
       - id: result
         kind: outcome
         result: "params.overcast ? 'overcast' : 'cast'"

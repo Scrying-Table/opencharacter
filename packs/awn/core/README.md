@@ -15,7 +15,7 @@ edition and is used with the author's permission. Nothing from the paid edition 
 pnpm add @opencharacter/awn-core @opencharacter/engine
 ```
 
-This release needs spec 0.3: `@opencharacter/engine` 0.3.0 or later. An engine for an older
+This release needs spec 0.4: `@opencharacter/engine` 0.4.0 or later. An engine for an older
 spec refuses it (`spec-version-unsupported`).
 
 ```ts
@@ -82,7 +82,15 @@ const run = startAction(ruleset, blank, {
 - **Advancement:** experience on the fast or slow table, `level-up`, `improve-skill` and
   `improve-attribute` with the book's costs and minimum levels.
 - **Gear:** armor, ranged, melee, high-tech and portable heavy weapons, survival gear, drugs and
-  stims. Each weapon shows its hit bonus, damage bonus and Shock; `attack` rolls it.
+  stims. Each weapon shows its hit bonus, damage bonus and Shock; `attack` rolls it. Burst
+  weapons add a `burst` parameter to `attack` (three rounds for +2 to hit and damage), and melee
+  weapons that can be thrown a `thrown` one; other weapons offer neither.
+- **Armsmaster and Deadeye** both reach thrown attacks; there the better of the two counts, on
+  hit and damage together.
+- **Foes a focus is good against:** Apex Predator, Robot Whisperer and Zombie Smasher (level 2)
+  add `beast`, `robot` and `zombie` parameters to `attack`, set when the target is one: half the
+  level to damage and Shock, +4 to hit and damage, or a roll that counts as a natural 20 and 8
+  more damage.
 - **Encumbrance:** Readied (equipped) and Stowed loads against Strength, small items bundled
   three to one when stowed, and the slower moves of pushing past the limits. A start that brings
   more than its Strength can haul stows Readied items, then leaves Stowed ones behind, heaviest
@@ -114,8 +122,10 @@ it with the core's, in the guided picks and the random draws:
   their d10 roll within it.
 - **Tagged steps** take an add-on's rules-level `option` and `changes` effects: `creation.kit`
   (the starting equipment option: an added option is another way to equip), `creation.mutation`
-  (how mutation points are spent), `creation.finish` (the last step of creation) and
-  `advancement.level` (each new level's level and skill points).
+  (how mutation points are spent), `creation.finish` (the last step of creation),
+  `advancement.level` (each new level's level and skill points) and `attack.begin` (an attack's
+  first step, whose flags `natural20` and `shockBonus` content may set, with a parameter it adds
+  to `attack`).
 
 - **Open enums:** the stigma fields (`stigma.part`, `stigma.part2`, `stigma.nature`,
   `stigma.detail`), for more suggestions to set by hand; the rolled tables keep the book's.
@@ -144,6 +154,7 @@ The near-future and wasteland d20 tables are the book's own tables.
   which is what rerolling until one fits gives.
 - **An edge's bonus skill after creation** (Mutant or another at 5th level) counts as three skill
   points, as a focus's does.
+- **Thrown attacks** are ranged attacks and deal no Shock, which is for melee.
 - **Stigma details:** the d12 column follows the nature (texture for size, amorphous and
   mineral changes).
 

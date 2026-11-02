@@ -2,6 +2,8 @@ fields:
   # Cursed Luck is on the character: attacks against them and damage they take roll twice and
   # keep the better.
   psionics.cursedLuck: { type: boolean, formula: false }
+  # Mastered Succor: Psychic Succor needs no Effort.
+  psionics.masteredSuccor: { type: boolean, formula: false }
   effort.bonus: { type: integer, formula: 0 }
   # A wild talent's Effort, for a character who isn't a psychic.
   effort.wild: { type: integer, formula: 0 }
@@ -79,6 +81,8 @@ contentTypes:
       level: { type: integer, required: true, min: 0, max: 4 }
       # The discipline's core technique: every psychic with the skill has it.
       core: { type: boolean, default: false }
+      # Lasts for as long as its Effort stays Committed, rather than for a scene or a day.
+      sustained: { type: boolean, default: false }
     state:
       # Effort Committed to keep the technique going, until it is released.
       committed: { type: integer, default: 0, min: 0 }
@@ -88,6 +92,7 @@ contentTypes:
       - { target: effort.active, op: add, value: self.committed }
     actions:
       - use: sustain-technique
+        available: item.sustained
       - use: release-technique
 
 constraints:
@@ -103,8 +108,8 @@ constraints:
     check: effort.max + effort.torched - effort.scene - effort.day - effort.active >= 0
 
 actions:
-  # Commit a point of Effort for as long as the technique lasts: it stays Committed on the
-  # technique until the psychic releases it, ending the power.
+  # Commit a point of Effort for as long as a sustained technique lasts: it stays Committed on
+  # the technique until the psychic releases it, ending the power.
   - id: sustain-technique
     tags: [psionics]
     available: effort.available > 0

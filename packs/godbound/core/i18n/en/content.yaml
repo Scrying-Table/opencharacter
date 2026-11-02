@@ -293,6 +293,7 @@ gifts.bow.lord-of-that-which-falls.name: Lord of That Which Falls
 gifts.bow.lord-of-that-which-falls.description: Commit Effort. Redirect any ranged weapon attacks in your presence, with their attack roll applied against the new target. Worthy foes may only have their attacks redirected if they're shooting at you. Projectiles may be redirected at any target, though a single victim can be targeted by no more than one attack per round this way. Subjects who have also bound to the Bow Word are immune to this power, as are other divinities affiliated with the bow.
 gifts.bow.rain-of-sorrow.prerequisites.word: Bound to the Word of Bow
 gifts.bow.rain-of-sorrow.name: Rain of Sorrow
+gifts.bow.rain-of-sorrow.params.mob.name: Against a Mob (Rain of Sorrow)
 gifts.bow.rain-of-sorrow.description: Commit Effort. Against Mobs, the damage dice of your ranged weapon attacks are rolled straight and add your level. Thus, a 4th level Godbound firing a 1d10 weapon with a +2 attribute bonus would inflict from 7 to 16 hit dice of damage against a Mob. Against targets not grouped into a Mob, you may roll your Fray die against every applicable foe in sight each round.
 gifts.command.guards-seize-him.name: Guards! Seize him!
 gifts.command.guards-seize-him.description: Up to a Small Mob worth of minions or a half-dozen individual retainers can be made to appear in the current location, provided they're within ten miles of the Godbound. Only formally-pledged followers of the Godbound can be summoned, and they can't be summoned to any place they could not practically reach under their own power. The summoned retainers appear wherever they would most logically enter, the Godbound's powers having caused them to hasten to answer the summons before it was even given.
@@ -455,6 +456,8 @@ gifts.health.vital-furnace.name: Vital Furnace
 gifts.health.vital-furnace.description: Commit Effort for the day. Instantly heal any hit points lost since the end of your last turn, provided the harm didn’t kill you.
 gifts.health.burning-vitality.prerequisites.word: Bound to the Word of Health
 gifts.health.burning-vitality.name: Burning Vitality
+gifts.health.burning-vitality.params.onSelf.name: Heal yourself, a hit point each round
+gifts.health.burning-vitality.state.mending.name: Healing each round
 gifts.health.burning-vitality.description: Commit Effort for the day. Regain 1 hit point per round until at full health. Alternatively, you may Commit Effort for the day to heal 1 hit point or hit die in all allies within 100 yards and raise ordinary mortal beings from the dead with 1 hit die, provided they died within the past five minutes and are not completely mangled. Recipients need not Commit Effort to benefit from this healing.
 gifts.health.deplete-health.prerequisites.word: Bound to the Word of Health
 gifts.health.deplete-health.name: Deplete Health
@@ -536,6 +539,7 @@ gifts.might.shoulders-wide-as-the-world.description: Commit Effort. The Godbound
 gifts.might.stronger-than-you.name: Stronger Than You
 gifts.might.stronger-than-you.description: Whenever the Godbound is in an opposed Strength check or contest against another creature or opposing it in a grapple or other exercise of strength, the Godbound always wins. If two Godbound with this gift struggle, the test is resolved normally. As an action, the Godbound can confer the benefits of this gift on an ally for one contest or action.
 gifts.might.surge-of-strength.name: Surge of Strength
+gifts.might.surge-of-strength.params.surgeOfStrength.name: Surge of Strength (Effort for the scene)
 gifts.might.surge-of-strength.description: Commit Effort for the scene to maximize any single damage roll modified by Strength. Such is your aura of tremendous might that you can apply this benefit to an ally within sight if you wish.
 gifts.might.leap-the-moon.prerequisites.word: Bound to the Word of Might
 gifts.might.leap-the-moon.name: Leap the Moon
@@ -690,6 +694,7 @@ gifts.sword.thirsting-razor.description: Commit Effort. You always hit lesser fo
 gifts.sword.through-a-red-forest.name: Through A Red Forest
 gifts.sword.through-a-red-forest.description: Commit Effort. While the Effort is committed, when fighting multiple lesser foes or a Mob of them, you may choose to take damage as if from a successful hit from one of them of the GM’s choice. You then gain an invincible defense against weapon or unarmed attacks from the rest of these lesser foes until the start of your next turn.
 gifts.sword.unerring-blade.name: Unerring Blade
+gifts.sword.unerring-blade.params.unerringBlade.name: Unerring Blade (Effort for the scene)
 gifts.sword.unerring-blade.description: Commit Effort to the scene’s end. Your current or next melee attack hits on anything but a natural roll of 1 and does maximum damage. This strike can penetrate any protection short of an invincible defense against the weapon being used.
 gifts.sword.cutting-the-crimson-road.prerequisites.word: Bound to the Word of Sword
 gifts.sword.cutting-the-crimson-road.name: Cutting the Crimson Road

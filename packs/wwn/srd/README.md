@@ -18,7 +18,7 @@ Publishing.
 pnpm add @opencharacter/wwn-srd @opencharacter/engine
 ```
 
-This release needs spec 0.3: `@opencharacter/engine` 0.3.0 or later. An engine for an older
+This release needs spec 0.4: `@opencharacter/engine` 0.4.0 or later. An engine for an older
 spec refuses it (`spec-version-unsupported`).
 
 The package's default export is the pack's release, ready for `loadRuleset`; its English text is
@@ -72,18 +72,32 @@ computeSheet(ruleset, made.character).values['wwn-srd:saves.physical']?.value; /
 - **Foci:** all thirty-six, Traditional Education included, with their levels, bonus skills,
   who may take them, and the effects that change numbers: Die Hard, Impervious Defense,
   Developed Attribute, Armsmaster, Deadeye, Shocking Assault, Close Combatant, Unarmed Combatant,
-  Specialist, Gifted Chirurgeon, Polymath, Alert, Armored Magic, Xenoblooded.
+  Specialist, Gifted Chirurgeon, Polymath, Alert, Armored Magic, Xenoblooded, Nullifier. A
+  Nullifier's +2 on saves against magic (the `magical` situational choice) reaches allies
+  through its twenty-foot aura, which the app places on those inside; the `nullified` choice
+  stays for a table that doesn't, and never adds to the aura's.
 - **Hit points, attack and saves:** hit dice rolled again each level (no die below 1, one more
   than before at least), the class mix's attack bonus, saves of 16 less level and the better
   modifier, System Strain up to Constitution, Frail and Mortally Wounded.
 - **Combat:** `attack` on each weapon: 1d20 plus attack bonus, skill (-2 without it) and the
   better attribute; damage on a hit, Shock on a melee miss against a target with an AC no
-  better than the weapon's, and a hit never doing less than its Shock. Armor Class from armor,
-  shields (+1 over armor as good) and the natural defenses some Foci and arts give. `initiative`.
+  better than the weapon's, and a hit never doing less than its Shock. Only a throwable weapon
+  asks whether it's thrown. Each weapon's card shows its numbers as wielded (computed values):
+  hit bonus, damage bonus, Shock damage and the AC it reaches. Armsmaster's and Deadeye's
+  bonuses are fields by use (`attack.<mode>.bonus`, `damage.<mode>.bonus`, `shock.melee.bonus`,
+  `shock.unarmed.bonus`; melee, thrown, ranged or unarmed), so they count on the cards too.
+  Unarmed Combatant, Natural Weaponry and Unarmed Might each give a whole unarmed attack: its
+  die, Shock and Shock AC come from the one the player picks (the best die recommended), never
+  mixed. Armor Class from armor, shields (+1 over armor as good) and the natural defenses some
+  Foci and arts give. `initiative`.
 - **Magic:** spells by level and list (High Magic, Elementalist, Necromancer), preparation and
   casting limits for full, partial, dual partial and Invoker casters (spell points), the arts
   of every class with the Effort they commit, each class's own Effort pool, and the arts its
   class grants or teaches by level. `cast-spell`, `commit-effort`, `rest` and `end-scene`.
+  Every art's card, a class's granted arts included, shows its tradition's free Effort. Retain
+  Sorcery's Effort gives back the day's last casting (not an Invoker's spell points). The
+  casting and committing steps are tagged `spell.cast` and `art.commit` for content's `changes`
+  effects.
 - **Advancement:** experience on the fast or slow track, `level-up` (hit points, skill points,
   a Focus at 2, 5, 7 and 10 with three skill points toward its skill, arts and spells), and
   `improve` to spend skill points on skills and attribute boosts at their level minimums.

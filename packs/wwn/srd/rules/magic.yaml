@@ -352,9 +352,16 @@ contentTypes:
     state:
       # An art whose Effort stays committed while it lasts.
       active: { type: boolean, default: false }
+    # The Effort its tradition has free, on the card of every art, granted ones too.
+    computed:
+      effortFree:
+        type: integer
+        formula: >-
+          item.tradition in keysOf('effortTrad')
+            ? fieldOf('effort.{effortTrad}.free', item.tradition) : 0
     actions:
-      - use: commit-effort
-      - use: release-effort
+      - { use: commit-effort, available: "item.effort != 'none'" }
+      - { use: release-effort, available: "item.effort == 'ongoing'" }
 
 constraints:
   - id: spells-prepared
@@ -394,6 +401,7 @@ actions:
     steps:
       - id: spend
         kind: changes
+        tags: [spell.cast]
         changes:
           - type: adjust
             when: "spells.mode == 'invoker' || spells.mode == 'partial-invoker'"
@@ -412,7 +420,7 @@ actions:
   - id: commit-effort
     tags: [art]
     available: >-
-      item.effort != 'none' && level >= item.minLevel && !(item.effort == 'ongoing' && self.active)
+      level >= item.minLevel && !(item.effort == 'ongoing' && self.active)
         && item.tradition in keysOf('effortTrad')
         && fieldOf('effort.{effortTrad}.free', item.tradition) > 0
         && !(item.tradition in keysOf('armorTrad') && magic.hindered)
@@ -421,6 +429,7 @@ actions:
     steps:
       - id: commit
         kind: changes
+        tags: [art.commit]
         changes:
           - type: adjust
             field:
@@ -446,7 +455,7 @@ actions:
   # Reclaim the Effort an art keeps committed, ending it.
   - id: release-effort
     tags: [art]
-    available: "item.effort == 'ongoing' && self.active"
+    available: self.active
     results: [released]
     steps:
       - id: release

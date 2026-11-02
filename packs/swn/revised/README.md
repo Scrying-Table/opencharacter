@@ -16,7 +16,7 @@ edition only, with the author's permission; nothing from the paid deluxe edition
 pnpm add @opencharacter/swn-revised @opencharacter/engine
 ```
 
-This release needs spec 0.3: `@opencharacter/engine` 0.3.0 or later. An engine for an older
+This release needs spec 0.4: `@opencharacter/engine` 0.4.0 or later. An engine for an older
 spec refuses it (`spec-version-unsupported`).
 
 The package's default export is the pack's release, ready for `loadRuleset`; its English text is
@@ -106,13 +106,20 @@ sheet.values['swn-revised:saves.physical']?.value; // 15 less the better of Str 
 - **Psionics:** the six disciplines, their core techniques (held while the skill is level-0 or
   better) and 63 techniques, each needing its skill level. Effort is 1 + the highest psychic
   skill + the better of Wisdom and Constitution modifiers (at least 1); `commit-effort` commits
-  it for the scene or the day, `sustain-technique` commits a point to a technique for as long as
-  it lasts (held on the technique's copy, the pick of a Wild Psychic Talent, or the grant of a
-  core technique, until `release-technique` reclaims it), and `torch`
-  rolls the torching table for a free point. Cursed Luck's `curse` commits Effort for the scene
-  and applies the technique to its target: their attacks, damage, checks and saves roll twice
+  it for the scene or the day, `sustain-technique` commits a point to a technique that lasts
+  for as long as its Effort stays Committed (`sustained`: Cloak Powers, Concert of Minds,
+  Kinetic Transversal, Metamorph, Neural Trap, Pressure Field (its shield for comrades),
+  Prophecy, Spatial Awareness, Stutterjump, Telekinetic Armory and Telekinetic Flight), held on
+  the technique's copy, the pick of a Wild Psychic Talent, or an add-on's core technique's
+  grant, until `release-technique` reclaims it, and `torch` rolls the torching table for a free
+  point. Cursed Luck's `curse` commits Effort for the scene and applies the technique to its
+  target: their attacks, damage, checks and saves roll twice
   and keep the worse, attacks and damage against them roll twice and keep the better, and their
-  `throw-off` makes the Mental save that ends it.
+  `throw-off` makes the Mental save that ends it. The psychic's `end-scene` and `rest` end it
+  too, on whoever holds it (a removal `to: applied`, which the app applies to the characters the
+  psychic cursed). Psychic Succor's `succor` Commits Effort for the day on its first use in a
+  scene (`scene.succor` marks it paid; none with Mastered Succor) and shows its healing at the
+  biopsion's level on the technique (`healDice` d6 + `healBonus`).
 - **Advancement:** the experience table (a `level-up` follow-up to 10th level; later levels are
   the GM's call). `level-up` rolls the hit dice, grants three skill points (one psychic for a
   psychic, plus the Expert's), and a focus level at 2nd, 5th, 7th and 10th. `raise-skill`,
@@ -120,8 +127,11 @@ sheet.values['swn-revised:saves.physical']?.value; // 15 less the better of Str 
   A focus's bonus skill taken on advancement is three points toward that skill; what doesn't buy
   a level is saved as the skill's `credit`, which `raise-skill` spends first.
 - **Combat:** attack bonus, `attack` (d20 + attack bonus + combat skill, −2 untrained, +
-  modifier, +1 for energy weapons, +2 for burst fire) against the target's AC, damage, Shock on
-  a miss, ammunition and `reload`; Armor Class from the best armor, a shield and Dexterity.
+  modifier, +1 for energy weapons) against the target's AC, damage, Shock on a miss, ammunition
+  and `reload`; Armor Class from the best armor, a shield and Dexterity. Each weapon shows its hit
+  bonus, damage bonus and Shock damage as computed values. Burst fire is a `burst`
+  parameter of a burst weapon's own attacks: with three rounds left it spends them for +2 to hit
+  and damage, else it fires one.
 - **System Strain:** permanent from cyberware, temporary from drugs; `use-drug`,
   `trigger-cyberware` and Psychic Succor (given the target's `strain.total` and `strain.max`)
   refuse what would pass Constitution. `rest` restores hit points, Strain,
@@ -160,7 +170,8 @@ with the core content alone):
   ruleset's `enumOrigins`, `optionOrigins` and `familyOrigins`. For example,
   `spikes` added to `swn-revised:types.weapon.fields.ammo` is
   `types.weapon.fields.ammo.values.spikes.name: Spike magazine` (through `enumOrigins`).
-- **Tagged steps** take an add-on's rules-level `option` and `changes` effects: `creation.kit`
+- **Tagged steps** take an add-on's rules-level `option` and `changes` effects: `attack.fire`
+  (an attack's first step, which sets `flags.burst`), `creation.kit`
   (the starting package pick: an added option replaces the package), `creation.focus` and
   `level-up.focus` (a focus pick at creation or on advancement: an added option is taken instead
   of a focus), `creation.finish` (the last changes of both creation actions, before creation

@@ -1,9 +1,3 @@
-settings:
-  # Rerolled or extra-die skill checks (Specialist, Healer, Sniper's Eye) don't stack: the best
-  # applies.
-  stacking:
-    keys: { skill-dice: highestOnly }
-
 resultBands:
   check:
     - { id: success, when: roll.total >= flags.dc, success: true }
@@ -115,6 +109,10 @@ actions:
             copies: { type: cyberdeck, where: self.shieldingUsed > 0 }
             key: shieldingUsed
             value: 0
+          - type: setState
+            copies: { type: spell, where: self.sceneCasts > 0 }
+            key: sceneCasts
+            value: 0
           - { type: set, field: effort.mage.scene, value: 0 }
           - { type: set, field: effort.summoner.scene, value: 0 }
       - { id: result, kind: outcome, result: "'ended'" }
@@ -133,6 +131,10 @@ actions:
           - { type: adjust, when: strain.temporary > 0, field: strain.temporary, by: -1 }
           - { type: set, field: effort.mage.day, value: 0 }
           - { type: set, field: effort.mage.scene, value: 0 }
+          - type: setState
+            copies: { type: spell, where: self.sceneCasts > 0 }
+            key: sceneCasts
+            value: 0
           - { type: set, field: effort.summoner.day, value: 0 }
           - { type: set, field: effort.summoner.scene, value: 0 }
           - { type: set, field: hacking.access.spent, value: 0 }

@@ -104,6 +104,7 @@ fields.saves.spirit.penalty.name: Spirit armor penalty
 fields.fray.die.name: Fray die
 fields.fury.active.name: Divine fury
 fields.fury.spent.name: Divine fury spent this level
+fields.fury.rounds.name: Rounds of divine fury left
 
 fields.gifts.points.total.name: Gift points
 fields.gifts.points.spent.name: Gift points spent
@@ -161,8 +162,11 @@ types.word.fields.range.name: Range (feet)
 
 types.gift.name: Gift
 types.gift.block: >-
-  {has_word, select, true {{word_name} · } other {}}{has_apotheosisLevel, select, true {Level {apotheosisLevel} · } other {}}{has_degree, select, true {{degree_name} · } other {}}{smite, select, true {(Smite) } other {}}{activation_name}{commit, select, none {} other { · Commit Effort: {commit_name}}}
+  {has_word, select, true {{word_name} · } other {}}{has_apotheosisLevel, select, true {Level {apotheosisLevel} · } other {}}{has_degree, select, true {{degree_name} · } other {}}{smite, select, true {(Smite) } other {}}{activation_name}{commit, select, none {} other { · Commit Effort: {commit_name}}}{has_self_damage, select, true { · Damage {self_damage}} other {}}{has_self_mobDamage, select, true { · Against a Mob {self_mobDamage}} other {}}{has_self_healing, select, true { · Healing {self_healing}} other {}}
 types.gift.state.committed.name: Effort held
+types.gift.computed.damage.name: Damage
+types.gift.computed.mobDamage.name: Damage against a Mob
+types.gift.computed.healing.name: Healing
 types.gift.state.artifactEffort.name: Artifact Effort
 types.gift.fields.word.name: Word
 types.gift.fields.degree.name: Degree
@@ -193,6 +197,7 @@ types.gift.fields.twoHanded.name: Two-handed
 types.gift.fields.hitModifier.name: Hit modifier
 types.gift.fields.blast.name: Damage
 types.gift.fields.blastMob.name: Damage against a Mob
+types.gift.params.mob.name: Against a Mob
 types.gift.fields.blastStraight.name: Damage read straight
 types.gift.fields.halvedBy.name: Save for half
 types.gift.fields.halvedBy.values.hardiness.name: Hardiness
@@ -273,6 +278,7 @@ tags.check.cha.name: Charisma check
 tags.attack.name: Attack
 tags.attack.melee.name: Melee attack
 tags.attack.ranged.name: Ranged attack
+tags.attack.boost.name: Attack boosted by a gift
 tags.damage.name: Damage
 tags.damage.melee.name: Melee damage
 tags.damage.ranged.name: Ranged damage
@@ -295,7 +301,11 @@ tags.rest.day.name: New day
 tags.rest.scene.name: Scene end
 tags.health.name: Hit points
 tags.fury.name: Divine fury
+tags.turn.name: Turn
+tags.turn.boundary.name: A turn's change
 tags.gift.name: Gift
+tags.gift.commit.name: A gift's Effort committed
+tags.gift.invoke.name: A gift used
 tags.theurgy.name: Theurgy
 tags.low-magic.name: Low magic
 tags.artifact.name: Artifact
@@ -336,7 +346,6 @@ actions.attack.params.attribute.values.int.name: Intelligence
 actions.attack.params.attribute.values.cha.name: Charisma
 actions.attack.params.targetAc.name: Target's armor class
 actions.attack.params.modifier.name: Hit modifier
-actions.attack.params.maximize.name: Maximum damage
 actions.attack.params.straight.name: Read the damage straight
 actions.fray.name: Fray die
 actions.fray.params.straight.name: Read the damage straight
@@ -355,6 +364,10 @@ actions.divine-fury.name: Divine fury
 actions.divine-fury.results.raging.name: Raging
 actions.end-fury.name: End the divine fury
 actions.end-fury.results.ended.name: Ended
+actions.turn-boundary.name: Turn change
+actions.turn-boundary.params.ended.name: Whose turn ended
+actions.turn-boundary.params.started.name: Whose turn starts
+actions.turn-boundary.results.passed.name: Passed
 
 actions.commit-effort.name: Commit Effort
 actions.commit-effort.params.duration.name: For
@@ -389,7 +402,6 @@ actions.invoke-gift.results.invoked.name: Invoked
 actions.release-gift.name: Reclaim the Effort
 actions.release-gift.results.released.name: Reclaimed
 actions.gift-blast.name: Deal damage
-actions.gift-blast.params.mob.name: Against a Mob
 actions.gift-blast.params.straight.name: Read the damage straight
 actions.gift-blast.results.rolled.name: Rolled
 actions.gift-heal.name: Heal

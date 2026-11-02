@@ -17,7 +17,7 @@ affiliated with, approved or endorsed by Kevin Crawford or Sine Nomine Publishin
 pnpm add @opencharacter/cwn-srd @opencharacter/engine
 ```
 
-This release needs spec 0.3: `@opencharacter/engine` 0.3.0 or later. An engine for an older
+This release needs spec 0.4: `@opencharacter/engine` 0.4.0 or later. An engine for an older
 spec refuses it (`spec-version-unsupported`).
 
 The package's default export is the pack's release, ready for `loadRuleset`; its English text is
@@ -93,9 +93,12 @@ the player's choices and other characters.
   per level, skill points, the Focus and Edge the level brings), and actions to spend skill
   points on skills and attribute boosts.
 - **Combat:** attack bonus, saves, initiative, Ranged and Melee AC, Trauma Target, Damage Soak
-  that ablates per fight, and an attack action with the attribute choice, skill (-2 untrained),
-  burst fire, Shock on a miss, the Trauma Die and Traumatic Hits, Killing Blow, Armsmaster and
-  Deadeye. Weapons track their magazines.
+  that ablates per fight, and an attack action with the skill (-2 untrained), Shock on a miss,
+  the Trauma Die and Traumatic Hits, Killing Blow, Armsmaster and Deadeye. Each weapon adds the
+  parameters it uses: the attribute for a Str/Dex weapon, throwing for a melee weapon with a
+  range, burst fire for a burst weapon. Weapons track their magazines, and each weapon copy
+  computes its hit bonus, damage bonus and Shock as an attack with it starts (`hit`, `damage`,
+  `shock`), which its block shows; a drone copy its pilot's attack bonus.
 - **Gear:** every weapon, armor, accessory, mod, mission gear, pharmaceutical, cyberdeck,
   program element, drone, drone fitting, vehicle, vehicle fitting and mod in the document.
   Mods, fittings and armor accessories are templates on their item; fittings use a drone's
@@ -106,10 +109,15 @@ the player's choices and other characters.
   counts implants, lifestyle and the drugs, first aid and cyber that add to it. A Neural
   Buffer's phantom hit points refresh by its hourly action and on a night's rest.
 - **Hacking:** Access, Memory, CPU and Shielding from the best deck, the program elements in
-  Memory, the programs a hacker can write and keep, and an action to run a program.
-- **Magic:** Mage and Summoner Effort, cyber's cost to them, prepared spells, casting and
-  overcasting, summoning (each spirit's cost from its own powers and ritual), spirits and their
-  powers, and Graced arts with their points. Martial Instinct's bonus rolls (the `bonusRoll`
+  Memory, the programs a hacker can write and keep, and an action to run a program. Kill and
+  Stun compute their damage at the hacker's Program level (`damage`), which their text shows.
+- **Magic:** Mage and Summoner Effort, cyber's cost to them, prepared spells, casting (a spell
+  that Commits for the scene or the day asks which) and overcasting, summoning (each spirit's
+  cost from its own powers and ritual), spirits and their powers, and Graced arts with their
+  points. Spells that deal damage per level compute it at the caster's level (`damage`), Heal
+  Injury its healing (`healing`), and
+  Skin of Steel its Armor Class (`ac`), which their text shows. Spells count their casts in the
+  scene: Blast's and Blastwave's System Strain and a second Stun's day Effort are added. Martial Instinct's bonus rolls (the `bonusRoll`
   situational choice on an attack) roll the hit or damage twice, the better kept, and refresh
   with rest; Occult Pavis rolls saves against magic (`versusMagic`) twice.
 - **Contacts**, named by the player, as Acquaintances or Friends.
@@ -163,10 +171,14 @@ cyberware `concealment`, a spell's `effort`, vehicle `size`, and the attributes.
 - **Random start:** the attributes are rolled in order (one score made 14: the lowest, if under
   14), and the background's skills rolled, each roll's table drawn. Everything else is drawn
   among the eligible options.
-- **Guided recommendations:** the first eligible option, so an automatic run finishes; the
+- **Guided recommendations:** the first eligible option, so an automatic run finishes (level-up
+  too: Prodigy's, Specialist's, a skillplug's and All Natural's own picks recommend one, All
+  Natural the first attribute still under +3); the
   recommended Focus gear is the dearest vehicle or drone the budget buys, then the dearest that
   still fits, until the budget is spent.
 - **Physical skills** for skillplugs: Drive, Exert, Perform, Punch, Shoot, Sneak and Stab.
 - **Pushing encumbrance:** up to two Readied and four Stowed past the limits is Move 7 m, twice
   that is Move 5 m, and more is past the limits.
-- **Dermal plating and armor** don't stack: the higher base AC applies.
+- **Dermal plating, Skin of Steel and armor** don't stack: one source sets both base Armor
+  Classes (the `base-ac` key spans the two fields), and the player picks it, the best Ranged and
+  Melee AC together recommended.

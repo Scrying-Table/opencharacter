@@ -3,3 +3,12 @@ type: spell
 fields:
   effort: day
   duration: instant
+# The damage at the caster's level.
+computed:
+  damage: { type: string, formula: "string(level) + 'd6'" }
+effects:
+  # Each cast after the first in a scene adds one System Strain.
+  - target: { steps: [spell.cast], from: self }
+    op: changes
+    when: self.sceneCasts >= 1
+    value: { changes: [{ type: adjust, field: strain.temporary, by: 1 }] }
