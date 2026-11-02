@@ -53,7 +53,9 @@ console.log(en['fields.defenses.ac.name'], sheet.values['orc-sf-2e:defenses.ac']
 ```
 
 The guided start (`create-character`) pauses for each pick instead, and `level-up` raises the
-level, asking what the new level brings. The [quick start](https://opencharacterformat.org/guides/quick-start/)
+level, asking what the new level brings (each pick recommends: a boost to the key attribute, then
+Constitution, Dexterity, Wisdom, Strength, Intelligence and Charisma, anything else the first
+eligible option). The [quick start](https://opencharacterformat.org/guides/quick-start/)
 and the [guides](https://opencharacterformat.org/guides/) explain each call. Where the book
 leaves a rule open, the pack's reading is listed under [Rule readings](#rule-readings).
 
@@ -98,8 +100,10 @@ A pack that depends on `orc-sf-2e` can add to what it offers:
   connection or paradox sets with its own effect, as the core's do; weapon `group`,
   `damageType` and `ammoKind`, ammunition `kind`, armor `group`, consumable `category`,
   `damageType` and `persistentType`, spell damage types, affliction and persistent damage
-  condition damage types, feat `category`, and `cast-spell`'s `damageType` parameter
-  (`orc-sf-2e:actions.cast-spell.params.damageType`). A new damage type or group also needs its tag,
+  condition damage types and feat `category`. A spell whose caster picks its damage type or
+  battle form declares the choice as a parameter of its own cast (a `params` effect, such as
+  resist energy's `resistType`), setting the cast's damage type or form at its `spell.chosen`
+  step. A new damage type or group also needs its tag,
   declared and named in the add-on.
 - **Choices** (`extendChoices`): written value and inline option choices take additions: the
   operative's `specialization`, the epiphany feats' `spell` (Basic, New, Advanced, Greater and
@@ -198,7 +202,9 @@ fixed sets.
   resistances, Speeds, senses, skill trainings, granted feats) are effects.
 - **Backgrounds:** boosts, two trainings (a skill and a Lore) and a skill feat.
 - **Classes:**
-  - **Envoy:** directives (Get 'Em and the others, with Lead by Example), leadership styles,
+  - **Envoy:** directives (Get 'Em and the others, with Lead by Example; a new Get 'Em ends the
+    envoy's earlier one on the envoy and every ally, `to: applied`, and each lasts until the
+    start of the envoy's next turn, ended by `turn-boundary`), leadership styles,
     expertise, improvised mastery.
   - **Mystic:** connections (tradition, skill, a granted spell of each rank, epiphany focus
     spells), the vitality network (a pool of Hit Points with Transfer Vitality, regained each
@@ -216,7 +222,9 @@ fixed sets.
   Points, class DCs and spellcasting sources (mystic and witchwarper).
 - **Feats:** every general, skill, ancestry and class feat is content with its prerequisites;
   176 of them also carry their mechanics (bonuses, proficiencies, trainings, actions, granted
-  features and spells).
+  features and spells). A held feat carries the holder's class DC (its class's, through an
+  archetype) and spell DC as computed values (`classDc`, `spellDc`), which its text names where
+  it says "your class DC" or "your spell DC".
 - **Skill actions:** the Second Edition actions and the book's new ones (Access Infosphere,
   Hack, Operate Device, Navigate, Plot Course, Stunt, Take Cover), each a check with its degrees.
 - **Spellcasting:** spontaneous repertoires with slots, signature spells and heightening, focus
@@ -275,7 +283,7 @@ reads it as below. These are the pack's provisional calls; a table may rule othe
 
 ## Limitations
 
-- **Left to the app:** turns (it runs `start-turn` and `end-turn`), movement, reach, distances,
+- **Left to the app:** turns (it runs `start-turn`, `end-turn` and `turn-boundary`), movement, reach, distances,
   areas and auras (who is in a burst, a quantum field, a harmony's emanation or a bond's range is
   the participants the app passes), cover and flanking (situational choices), when a condition
   is gained, daily preparations and rests, a spell's duration and sustaining (a spell or

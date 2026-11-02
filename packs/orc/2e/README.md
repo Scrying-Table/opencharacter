@@ -100,9 +100,10 @@ A pack that depends on `orc-2e` can add to what it offers:
   value: "'thunder'" }`), as the core's do; weapon `group` and `damageType`, armor `group`,
   consumable `category`, `damageType` and `persistentType`, spell damage types (`damageType`,
   `damage2Type`, `persistentType` and the cast's `damageType` state), affliction and persistent
-  damage condition damage types, feat `category`, and the damage type parameters of `cast-spell`
-  (`damageType`) and `bomb-strike` (`damageType`, `persistentType`), so an added bomb or spell
-  deals its type (`orc-2e:actions.bomb-strike.params.damageType`). A new damage type or group also needs its
+  damage condition damage types, feat `category`, and the damage type parameters of
+  `bomb-strike` (`damageType`, `persistentType`), so an added bomb deals its type
+  (`orc-2e:actions.bomb-strike.params.damageType`). An added spell whose caster picks its damage
+  type or battle form declares the choice itself, as the core's do (below). A new damage type or group also needs its
   tag (`damage.sonic`, `group.firearm`), declared and named in the add-on.
 - **Choices** (`extendChoices`): written value and inline option choices take additions: the
   dedications' identity picks (Barbarian Dedication's `instinct`), the follow-up feats' inline
@@ -273,7 +274,12 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
 - **Turns** (the app runs them): `start-turn` resets the turn's attacks and flourishes, a
   raised shield and Dueling Parry, takes stunned's actions, makes a dying character's recovery
   check and reports the actions this turn (3, + quickened, − slowed and stunned); `end-turn`
-  lowers frightened. Persistent damage is each entry's own action: the damage,
+  lowers frightened. `turn-boundary` (`clock: turn-boundary`: the app runs it on every creature
+  at each turn change, with whose turn ended and whose starts) ends what a creature applied by
+  that creature's turns, whoever holds it: a condition or effect's `duration` state lasts until
+  the start of its applier's next turn (`next-start`) or the end of it (`next-end`, armed as
+  `end` when that turn starts); the entry knows its applier (`appliedBy`). Content joins in on
+  `turn.boundary`. Persistent damage is each entry's own action: the damage,
   then a DC 15 flat check that ends it on a success. Sickened has its own Retch action.
 - **Shields:** `raise-shield` (and Reactive Shield) give the shield's circumstance bonus to AC;
   Shield Block is a situational choice on incoming damage: the hardness comes off,
@@ -326,7 +332,10 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
   ten ancestry Lores are `rules/lores-pc2.yaml`; the cursed background's Warding Sign is the
   situational choice `wardingSign`, the feybound's Fey's Fortune `fortune`.
 - **Feats:** a slot per level for ancestry (1, 5, 9, 13, 17), general (3, 7, 11, 15, 19; skill feats
-  too), class (1 and even levels) and skill feats (even levels), none taken twice unless `repeatable`. Each schedule,
+  too), class (1 and even levels) and skill feats (even levels), none taken twice unless `repeatable`. A held
+  feat carries the holder's class DC and spell DC as computed values (`classDc`, the class
+  feat's own class's through an archetype; `spellDc`), which its text names where it says "your
+  class DC" or "your spell DC" (`{self_classDc}`, shown when an app fills them). Each schedule,
   and the boosts at 5th, 10th, 15th and 20th, is one slotted choice with one
   prompt. General and skill feats: all 111 of Player Core up to 7th level (19 general, 92 skill;
   a skill feat's `skills` are the skills its prerequisites name, `skill.lore` for any Lore,
@@ -386,7 +395,13 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
   Strikes against an off-guard target: the target's view, the player's `offGuardTarget`, or a
   feat's Strike given it (Twin Feint); agile, finesse and ranged weapons, or a ruffian's
   small-die weapons. A thief adds Dexterity for Strength on finesse melee damage. Debilitating
-  Strike sends a debilitation (an applied effect) or enfeebled 1 to the target, two from 15th.
+  Strike sends a debilitation (an applied effect) or enfeebled 1 to the target, two from 15th,
+  until the end of the rogue's next turn (`duration: next-end`), as do the racket feats'
+  debilitations; it first ends the rogue's earlier debilitations on that target (its entries
+  marked `debilitation`, by `appliedBy`), before any is picked. A condition a debilitation gives
+  stays its own entry (the condition type's `reapply` matches `debilitation` and `duration`), so
+  it doesn't merge into the same condition from elsewhere. Two rogues debilitating one creature
+  with the same condition share one entry, owned by the later.
   Evasive Reflexes, Rogue Resilience and Agile Mind turn successes into critical successes. Feats:
   33 of levels 1 to 6; Twin Feint, Underhanded Assault, Head Stomp, Mug and Twist the Knife are
   actions, Nimble Dodge a toggle (the start of the turn clears it), Trap Finder a situational
@@ -549,7 +564,15 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
   of the void, shields of the spirit, spectral advance, champion's sacrifice, hero's defiance),
   the blessing of the devoted (armament, shield or swiftness, whose Speed applies; the runes are
   text), and the features by level
-  to Hero's Defiance.
+  to Hero's Defiance. The aura feats are auras the app places (`auras`, sized by
+  `champion.auraSize`: 15 feet, 30 while Expand Aura's effect is up, which lasts until the start
+  of the champion's next turn below 10th level): Aura of Courage lowers an ally's frightened at
+  the end of the champion's turn (`turn-boundary`), Aura of Despair gives enemies −1 to saves
+  against fear, Aura of Determination and Aura of Life give allies their bonuses and resistance
+  (and Aura of Life the champion its +1 to saves against void). The auras are down while the
+  champion is unconscious. Still text: Aura of Courage's lower frightened value for the champion,
+  Aura of Despair's floor of frightened 1, Aura of Determination's morph and polymorph effects
+  (only mental ones are a situational choice), Aura of Faith and Aura of Righteousness.
 - **The alchemist** (Player Core 2): Intelligence, versatile vials (`vials`, refilled by
   daily preparations), formulas (`formulas`, a set the book picks fill), advanced alchemy (one
   infused item per vial, its level the alchemist's), quick alchemy (a vial into an item), the
@@ -734,7 +757,14 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
   doubled on a critical hit), or one damage roll and each target's save on its own sheet (none,
   half, full or double by the degree), incapacitation, heightening (+N), persistent damage,
   conditions by the outcome, healing for allies, and the spell itself applied to the caster, an
-  ally or a target, its effects reading its rank (heightening to a given rank).
+  ally or a target, its effects reading its rank (heightening to a given rank). A spell whose
+  caster picks its damage type (resist energy, shadow blast, telekinetic projectile, …) adds
+  that choice to its own cast as a parameter with only the book's types (a `params` effect, such
+  as resist energy's `resistType`), which sets the cast's damage type at its `spell.chosen`
+  step; elemental toss and elemental blast take the elemental influence's type there, and
+  dragon breath and flurry of claws the draconic exemplar's tradition's (force, spirit, mental or
+  fire), unless the cast names one. Inner upheaval's and qi form's type is chosen once, as the
+  spell is cast, though the book lets inner upheaval choose it each Strike.
 - **Spells:** the 41 Player Core cantrips (with the bard's compositions and the witch's hexes)
   and every 1st-, 2nd- and 3rd-rank spell (58, 55, 34), text in `i18n/en/spells.yaml`; the
   casters' 1st-rank focus spells (7 school, 37 domain, 10 bloodline and 5 order spells), text in
@@ -743,7 +773,8 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
   order and 13 qi spells, 38 with mechanics), text in `i18n/en/spells-high.yaml`. Battle forms
   (`rules/battle-forms.yaml`) give their temporary Hit Points, skill floors and
   resistances, their AC (the form's + the level, without the armor's item bonus), and the chosen
-  form's Speeds and unarmed attacks (cast-spell's `form`; 39 forms, 60 attacks as standard
+  form's Speeds and unarmed attacks (a parameter each battle form spell adds to its cast, such as
+  animal form's `animalForm`; 39 forms, 60 attacks as standard
   copies), whose Strikes roll the form's attack modifier or the character's own if higher and
   the form's damage bonus; fly, climb and burrow Speeds are fields (`speed.fly`, `.climb`, `.burrow`);
   regenerate and malignant sustenance heal at the start of the turn (`turn.start`). Text-only
@@ -764,8 +795,12 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
 - **Leveling:** 1,000 experience offers `level-up` (a derived offer while it holds), which raises the level (Hit
   Points follow), spends the experience, gives a skill increase at 3rd and every odd level after
   (over the increases inputs, each within its `max`), and asks what the new level brings over the pending choices.
+  Those picks recommend: a boost to the key attribute, then Constitution, Dexterity, Wisdom,
+  Strength, Intelligence and Charisma (as creation's), anything else the first eligible option,
+  so under the automatic policy only the skill increase asks.
 - **Sheet layout**: field groups (character, attributes, defenses, saves,
-  skills, proficiencies, Bulk, the turn), action groups (Strikes, checks, reactions, turns,
+  skills, proficiencies, Bulk, the turn), action groups (Strikes, checks, reactions (a spell
+  cast as a reaction too, by a computed tag on `cast-spell`), turns,
   conditions and afflictions, class and feat actions, skill actions, exploration and downtime,
   spellcasting, inventory, advancement) and content groups (conditions and effects applied,
   ancestry, heritage, background, class, class features, feats by category, spells, weapons,
@@ -796,6 +831,9 @@ Still closed: attributes, proficiency ranks, saves, spell traditions (and a staf
 
 Where the books leave a rule open, or the format needs a choice the books don't make, the pack
 reads it as below. These are the pack's provisional calls; a table may rule otherwise.
+
+- **Debilitating Strike:** "a new debilitation ends any earlier one" is read per target: the
+  rogue's debilitations on other creatures stay.
 
 - **Random start:** the books have players choose, so the odds are the pack's. Each pick is
   drawn uniformly among the options eligible then, in the guided start's order, except that
@@ -858,7 +896,7 @@ reads it as below. These are the pack's provisional calls; a table may rule othe
   relics and vehicles, Ancestry Paragon and dual-class characters (their only source is the
   pre-Remaster Gamemastery Guide), and GM Core's level 0 characters (`level` may be 0 and
   `creation.needsClass` is a hook a variant pack may use).
-- **Left to the app:** turns (it runs `start-turn` and `end-turn`), movement and reach, who is
+- **Left to the app:** turns (it runs `start-turn`, `end-turn` and `turn-boundary`), movement and reach, who is
   flanked or in cover (situational choices), when a condition is gained (`applyEffect`), daily
   preparations (the pack's `daily-preparations` and `prepare-spells` say what happens), rests; a
   spell's duration, sustaining and dismissing it, its area and who is in it (an applied spell

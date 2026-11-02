@@ -135,8 +135,10 @@ tags:
   - spell.target
   - spell.caster
   - spell.paid
+  - spell.chosen
   - turn.start
   - turn.end
+  - turn.boundary
   - creation
   - creation.ancestry
   - creation.heritage
