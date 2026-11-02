@@ -10,6 +10,8 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Allocate step:** an action step that spends a budget across fields (FitD's creation dots, 5E point buy) or hands out a list of values, one per field (the standard array); a checkpoint answered with amounts.
 - **App:** the program using the engine; it owns the experience (dice presentation, time, choices, storage, display).
 - **Applied effect:** an entry in the character's `applied` list that turns on the effects of content the character doesn't own (Bless from an ally); the app toggles it, and its own incoming-change effect's `then` can end it (oil that burns away).
+- **Applier (`appliedBy`):** the character who applied an entry, saved on it; actions fill it in. A change sent `to: applied` reaches every entry one character applied, on whichever character holds it.
+- **Aura:** an area content projects (`auras` on an item); computeSheet lists the holder's, the app applies its entry to whoever is inside (`aura`, `appliedBy`), and its effects read the holder's view passed as `appliers` (`applier`).
 - **Breakdown:** the list of effects that changed a field's value, in order, returned by computeSheet ("showing the work").
 - **Breaking bump:** a pack version bump that may change saved state or the pack's interface: the minor version while 0.x (0.1.4 → 0.2.0), the major version from 1.0.0 (1.4.2 → 2.0.0). Shape and interface changes need one.
 - **Change:** one edit to a character, from the fixed set of change types, applied by applyChanges.
@@ -19,6 +21,7 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Checkpoint policy:** the app's rules for which checkpoints continue automatically and which pause.
 - **Choice:** a decision declared in content or rules: options, how many to pick, and when it applies. A value choice's options may come from a formula and be filtered by `where` (`value`); a content choice with `activate: false` picks references, not active content; one with `activeWhen` keeps its picks inactive while the condition fails; one with `addAs: copy` holds each pick as a copy added and removed with it.
 - **Choice path:** the address of a choice: an optional entry, then alternating choice IDs and picked options.
+- **Clock action:** a rules action the app runs at a moment of its clock on every character: `clock: turn-boundary` at each turn change, with the IDs of the characters whose turn ended and started.
 - **Competing options:** several active `set` effects on one field, or the effects of a `playerChooses` stacking group (one group across every field for a key spanning fields, an option per source); the engine reports them and the recommended one, and the app picks.
 - **Computed value:** a value worked out from the character for each copy of an item (a FitD cohort's quality), or for picked or granted content (a Draw Steel ability's damage), declared by its content type, item or templates, never saved; computeSheet returns it in `copies` or `activationValues`, its actions and follow-ups read it as `self.<name>`, and its text as `{self_<name>}`.
 - **Condition:** a formula that must evaluate to true or false (`when`, `showWhen`, `where`, prerequisites).
@@ -99,6 +102,7 @@ One-line definitions of OCF terms, consistent with the [specification](../../pac
 - **Safety limit:** a spec-defined cap (exploding dice, nesting depth, action steps) protecting engines from untrusted packs.
 - **Shape change:** a difference between two pack releases that changes what saved state means (removed content, field, state key, choice or option; a new required choice); it needs a breaking bump and an upgrade script that covers it.
 - **Shape error:** input that doesn't match the spec's JSON Schema, rejected before running.
+- **Shared sheet:** a character file holding a pool several characters spend from (hero tokens, the Director's Malice, a crew), linked from each through one slot; the app applies each one's spend in turn.
 - **Situational choice:** a roll-time choice declared in game data (advantage, cover, push yourself), or a choice the receiving player makes on one incoming change (Uncanny Dodge).
 - **Source:** where a value, roll item or issue came from (field, item, entry, template, effect, situational, rules, step, app).
 - **Spec upgrade:** data shipped with the spec that moves a character file across a spec version that changed the file's shape; `upgrade` runs the ones between the character's `specVersion` and the engine's, then writes the engine's version.

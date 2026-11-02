@@ -159,6 +159,120 @@ so a caster who merely knows Bless doesn't bless themselves. When Bless ends (it
 out, or concentration breaks), remove it from every ally. The engine never tracks time, so keep
 the cast's targets and duration in your own data, for example keyed by `castId`.
 
+### Who applied it
+
+Give the entry its applier: `appliedBy`, the caster's `id`. Every `applyEffect` an action proposes
+already carries the actor's, so applying an attack's changes to the target records who marked,
+frightened or blessed it. The target's own rules read it (`self.appliedBy`): an edge against the
+creature that marked you, an effect that ends at its applier's turn.
+
+```ts
+applyChanges(rulesetFor(ally), ally, [
+  { type: 'applyEffect', source: '5e-srd-5.1:spells.bless', appliedBy: cleric.id },
+]);
+```
+
+### Changes for whoever holds what you applied
+
+Some rules end what one character put on others: a new Mark ends the old one, an aura ends when
+its source is dying. The engine doesn't know who holds those entries, so the pack sends the change
+`to: 'applied'`, with no `character`, and its query keeps to the actor's entries
+(`applied.appliedBy`). Apply it to every character you hold that has such an entry; on any other
+it matches nothing:
+
+```ts
+const holders = (actorId) =>
+  everyone.filter((c) => (c.applied ?? []).some((a) => a.appliedBy === actorId));
+
+// Apply the run's changes in the order proposed, across characters: the unmark (an earlier
+// step) lands before the new mark, so the new mark stays. Each step's changes for one
+// character stay one batch.
+const recipients = (p) =>
+  p.to === 'applied'
+    ? holders(tactician.id)
+    : [p.character === undefined ? tactician : byId[p.character]];
+for (const step of [...new Set(mark.proposedChanges.map((p) => p.step))]) {
+  const own = mark.proposedChanges.filter((p) => p.step === step);
+  for (const c of new Set(own.flatMap(recipients)))
+    applyChanges(
+      rulesetFor(c),
+      c,
+      own.filter((p) => recipients(p).includes(c)).map((p) => p.change),
+    );
+}
+```
+
+A follow-up can go there too: an offer with `to: 'applied'` (the tactician is dying, so their
+marks end) is stored on the character whose change fired it. Apply its `changes` the same way,
+then clear it on that character with `{ type: 'clearFollowUp', id }`.
+
+## Auras
+
+A null's field, a paladin's aura, a banner: an aura puts effects on whoever is inside it. Where
+creatures stand is your app's business, so the pack lists the auras and you place their entries.
+The holder's `computeSheet` lists what it projects now in `auras`; apply an entry of each to every
+creature inside that `affects` names, and remove it when they leave or the aura drops off the
+list:
+
+```ts
+const nullSheet = computeSheet(rulesetFor(nullHero), nullHero);
+// nullSheet.auras: [{ source: 'draw-steel-heroes:abilities.null.null-field', aura: 'field',
+//                     entry: 'null-field', size: 1, affects: 'enemies' }]
+for (const a of nullSheet.auras)
+  for (const enemy of enemiesWithin(nullHero, a.size))
+    applyChanges(rulesetFor(enemy), enemy, [
+      { type: 'applyEffect', source: a.source, aura: a.aura, appliedBy: nullHero.id },
+    ]);
+```
+
+The aura's effects read the holder's live state (the extra effect the null bought this round),
+so pass the holder's view as `appliers` whenever you compute or act for a creature inside:
+
+```ts
+const appliers = [view(nullHero, nullSheet)];
+const goblinSheet = computeSheet(rulesetFor(goblin), goblin, [], {}, appliers);
+startAction(rulesetFor(goblin), goblin, { action: { id: 'monster-attack' }, appliers });
+```
+
+Without the view, the effects read the defaults the aura declares. Nothing in the goblin's file
+changes when the null's does: recompute it with the new view.
+
+## Turns
+
+Your app keeps the clock, but some rules count another creature's turn: damage taken "in one
+turn" (usually an enemy's), an effect that lasts "until the start of your next turn" on someone
+else. A pack that has them declares a rules action with `clock: turn-boundary`, listed in
+computeSheet's `actions` with that `clock`. At each turn change, run it on every character in the
+encounter that lists it, naming whose turn ended and whose starts:
+
+```ts
+function turnChange(everyone, ended, started) {
+  for (const c of everyone) {
+    const sheet = computeSheet(rulesetFor(c), c);
+    for (const a of sheet.actions.filter((a) => a.clock === 'turn-boundary')) {
+      const run = startAction(rulesetFor(c), c, {
+        action: { id: a.action },
+        params: {
+          ...(ended ? { ended: ended.id } : {}),
+          ...(started ? { started: started.id } : {}),
+        },
+      });
+      if ('status' in run && run.status === 'finished')
+        applyChanges(
+          rulesetFor(c),
+          c,
+          run.proposedChanges.filter((p) => p.to === 'self').map((p) => p.change),
+        );
+    }
+  }
+}
+```
+
+It needs nothing else from you and never pauses: every parameter has a default, no role is
+required, no step asks a choice, and its rolls roll with your dice function. The pack
+uses it to reset what lasts a turn and to end what the creature whose turn starts applied until
+then (its entries record it in `appliedBy`).
+
 ## Monsters and NPCs
 
 Monsters and NPCs are character files like any other: a stat block is a character with mostly
@@ -255,6 +369,37 @@ if ('status' in used && used.status === 'finished') {
   the linked character's ID in `character`. Look there for the linked sheet's offers: run its
   action on that character's own sheet, then clear it here with
   `{ type: 'clearFollowUp', id }` ([changing characters](changing-characters.md#what-the-rules-call-for-next)).
+
+## A pool the party shares
+
+Hero tokens, the Director's Malice, a crew's coin: a pool several characters spend from is its own
+character file, a **shared sheet**, linked from each of them through one slot
+([shared sheets](../../../packages/spec/docs/rules-and-fields.md#shared-sheets)). Make it once,
+save its `id` in every member's slot, and pass its view to each member's calls, as for a crew.
+
+Spends are the one thing to get right: each member's view is a copy of the pool, so apply each
+member's changes for the pool as soon as their action finishes, then recompute the pool before the
+next member acts:
+
+```ts
+function spend(hero, actionId) {
+  const pool = computeSheet(partyRuleset, party);
+  const links = { 'draw-steel-heroes:party': view(party, pool) };
+  const run = startAction(rulesetFor(hero), hero, { action: { id: actionId }, links });
+  if (!('status' in run) || run.status !== 'finished') return;
+  const forParty = run.proposedChanges.filter((p) => p.character === party.id).map((p) => p.change);
+  party = applyChanges(partyRuleset, party, forParty).character; // before anyone else spends
+  hero = applyChanges(
+    rulesetFor(hero),
+    hero,
+    run.proposedChanges.filter((p) => p.to === 'self').map((p) => p.change),
+  ).character;
+}
+```
+
+Run one spend at a time (a queue, or a lock on the shared sheet in a multiplayer app). A spend a
+stale view let through meets the pool's bounds and takes nothing; the next view shows the pool
+empty, so the action is no longer listed.
 
 ## Damage dealt to a target
 

@@ -87,6 +87,8 @@ const OP_TARGETS = new Map(
   loadFixedSet('effect-operations').items.map((op) => [op.id, op['targets'] as string[]]),
 );
 
+/** The changes a step or follow-up may send `to: applied`. */
+const APPLIED_ROUTE = new Set(['removeEffect', 'toggleEffect', 'setState', 'adjustState']);
 const COPY_CORE = new Set(['id', 'item', 'templates', 'equipped', 'quantity', 'choices', 'state']);
 
 function hasOutcome(steps: Step[]): boolean {
@@ -1013,6 +1015,28 @@ export class PackChecker {
       actionPacks: this.scope,
     };
     for (const effect of item.effects ?? []) this.effect(effect, file, owner);
+    const auras = new Set<string>();
+    for (const aura of item.auras ?? []) {
+      const where = `${owner} aura ${aura.id}`;
+      if (auras.has(aura.id)) this.report.error(file, `${where}: duplicate aura id`);
+      auras.add(aura.id);
+      this.optionalKeys.add(`${owner}.auras.${aura.id}.name`);
+      const ids = Object.keys(aura.fields ?? {});
+      for (const id of ids)
+        if (ids.some((other) => other.startsWith(`${id}.`)))
+          this.report.error(file, `${where}: "${id}" is also the start of another declared field`);
+      // The holder uses this pack: each declared field is one of its fields, of the same type.
+      for (const [id, decl] of Object.entries(aura.fields ?? {})) {
+        const found = this.ruleset.field(id, this.scope);
+        if (!found || found.def.type !== decl.type)
+          this.report.error(file, `${where}: "${id}" is not a ${decl.type} field of this pack`);
+      }
+      for (const effect of aura.effects) {
+        if ((effect.scope ?? 'applied') !== 'applied')
+          this.report.error(file, `${where}: an aura's effects are on whoever is inside (applied)`);
+        this.effect(effect, file, where);
+      }
+    }
     this.followUps(
       (item.followUps ?? []).map((fu) => ({ def: fu, file })),
       `${owner}.followUps`,
@@ -1083,10 +1107,12 @@ export class PackChecker {
         for (const tag of def.on.tags ?? []) this.tag(tag, file, where);
       }
       const to = def.to === 'self' ? undefined : def.to;
-      if (to) this.linkScope(to.link, file, where);
+      if (typeof to === 'object') this.linkScope(to.link, file, where);
+      if (to === 'applied' && def.action !== undefined)
+        this.report.error(file, `${where}: a follow-up to applied has changes, not an action`);
       if (def.create) this.createOffer(def.create, file, where);
       if (def.action !== undefined) {
-        if (to) {
+        if (typeof to === 'object') {
           if (!def.action.includes(':'))
             this.report.error(
               file,
@@ -1949,18 +1975,55 @@ export class PackChecker {
       }
       return;
     }
+    if (action.clock !== undefined)
+      this.report.error(file, `${keyPrefix}.${action.id}: only a rules action has a clock`);
     this.action(action, file, `${keyPrefix}.${action.id}`);
   }
 
   private action(action: ActionDef, file: string, key: string): void {
     this.params(action, file, key);
     this.roles(action, file, key);
+    this.clock(action, file, key);
     this.actionBody(action, file, key);
+  }
+
+  /** A clock action runs on every character with nothing the app must make up. */
+  private clock(action: ActionDef, file: string, key: string): void {
+    if (action.clock === undefined) return;
+    if (action.listed === false)
+      this.report.error(file, `${key}: a clock action is listed, so the app finds it`);
+    for (const [name, decl] of Object.entries(action.params ?? {})) {
+      if ((name === 'ended' || name === 'started') && decl.type !== 'string')
+        this.report.error(file, `${key}: a clock action's ${name} is a string (a character ID)`);
+      else if (decl.default === undefined && !decl.optional)
+        this.report.error(file, `${key}: a clock action's parameter ${name} needs a default`);
+    }
+    for (const [role, def] of Object.entries(action.participants ?? {}))
+      if ((def.min ?? 0) > 0)
+        this.report.error(file, `${key}: a clock action's role ${role} can't have a minimum`);
+    const seen = new Set<string>();
+    const walk = (steps: Step[]): void => {
+      for (const step of steps.flatMap((s) => [s, ...innerSteps(s)])) {
+        if (step.kind === 'choice' || step.kind === 'allocate' || step.as !== undefined)
+          this.report.error(
+            file,
+            `${key}: a clock action never pauses, but step ${step.id} asks the app (choice, allocate or handoff)`,
+          );
+        if (step.kind !== 'action' || !step.use || step.source !== undefined) continue;
+        if (step.entry !== undefined || seen.has(step.use)) continue;
+        seen.add(step.use);
+        const used = this.ruleset.action(step.use, this.scope);
+        if (used) walk(used.def.steps);
+      }
+    };
+    walk(action.steps);
   }
 
   private roles(action: ActionDef, file: string, key: string): void {
     for (const [role, def] of Object.entries(action.participants ?? {})) {
       const where = `${key}: role ${role}`;
+      if (role === 'applied')
+        this.report.error(file, `${where}: applied is a destination, not a role`);
       this.optionalKeys.add(`${key}.participants.${role}.name`);
       if (def.min !== undefined && def.max !== undefined && def.min > def.max)
         this.report.error(file, `${where}: min is greater than max`);
@@ -2128,7 +2191,11 @@ export class PackChecker {
           ...(step.kind === 'changes' ? [step.to] : []),
           ...writtenOptions(step).map((o) => o.to),
         ])
-          if (typeof to === 'string' && to !== 'self' && to !== 'target' && !declared(to))
+          if (
+            typeof to === 'string' &&
+            !['self', 'target', 'applied'].includes(to) &&
+            !declared(to)
+          )
             this.report.error(file, `${where}: to names undeclared role "${to}"`);
       }
     };
@@ -2192,6 +2259,12 @@ export class PackChecker {
       const pack = ref.slice(0, ref.indexOf(':'));
       return this.ruleset.packs.has(pack) ? this.ruleset.scope(pack) : undefined;
     };
+    // A change for every holder of the actor's entries names them by query.
+    if (to === 'applied' && (!APPLIED_ROUTE.has(change.type) || change.applied === undefined))
+      this.report.error(
+        file,
+        `${where}: a change sent to applied is a removeEffect, toggleEffect, setState or adjustState naming applied entries by query`,
+      );
     if (change.type === 'offerFollowUp') {
       const ref = change.followUp ?? '';
       const def = this.offered(ref);

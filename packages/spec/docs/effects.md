@@ -254,11 +254,11 @@ know which effects end: 5E's Sapped gives disadvantage on the target's next atta
 **When `then` fires.** A roll effect's `then` may instead be a rule, `{ changes, when, once,
 to }`, the list being its `changes`:
 
-| Property | Meaning                                                                                                                                                                                                                                                                                                                |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `when`   | `changed` (default): the effect changed the roll, as above. `applied`: the effect was in play on the roll, its target matched the roll (on a `parts` target, a part of it) and its `when` held, whether or not stacking kept it, an opposite kind cancelled it or it made a difference                                 |
-| `once`   | `action` (default): at most once per action run, as above. `roll`: once per roll step run that fires it, each pass of a group its own, so a boon that helps each attack of a volley spends a use for each; dice rolled again within the step (advantage, rerolled dice, a whole roll made more than once) are one roll |
-| `to`     | Who the changes are for, as a `changes` step's `to`. Default `self`, with the changes above. To another character (a role, `target`, `{ link }`), they are any proposed changes, resolved as a `changes` step's for that `to`, with `item` and `self` the content carrying the effect and the roll effect's context    |
+| Property | Meaning                                                                                                                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `when`   | `changed` (default): the effect changed the roll, as above. `applied`: the effect was in play on the roll, its target matched the roll (on a `parts` target, a part of it) and its `when` held, whether or not stacking kept it, an opposite kind cancelled it or it made a difference                                         |
+| `once`   | `action` (default): at most once per action run, as above. `roll`: once per roll step run that fires it, each pass of a group its own, so a boon that helps each attack of a volley spends a use for each; dice rolled again within the step (advantage, rerolled dice, a whole roll made more than once) are one roll         |
+| `to`     | Who the changes are for, as a `changes` step's `to`. Default `self`, with the changes above. To another character (a role, `target`, `{ link }`, `applied`), they are any proposed changes, resolved as a `changes` step's for that `to`, with `item` and `self` the content carrying the effect and the roll effect's context |
 
 The 5E rule ends Sapped on the next attack roll even when advantage cancels its disadvantage:
 
@@ -458,7 +458,7 @@ An effect's `scope` says who it applies to:
 - **`holder`** (the default): a character who has the content active, through features or inventory, a pick, or a grant.
 - **`applied`**: a character the content is applied to, through the character's `applied` list (a spell cast on them, a condition), or a grant with `scope: applied` of content applied to them (unconscious including blinded; [content.md](content.md#when-content-is-active)).
 
-Content in `applied` runs only its `applied` effects, and held content runs only its `holder` effects. So a caster who knows Bless doesn't bless themselves, while the targets it's cast on get +1d4. A spell that also changes its caster uses effects of both scopes. There is no content-type-level default for `scope`.
+Content in `applied` runs only its `applied` effects, and held content runs only its `holder` effects. An aura's entry runs only its aura's effects, which are all `applied` ([content.md](content.md#auras)). So a caster who knows Bless doesn't bless themselves, while the targets it's cast on get +1d4. A spell that also changes its caster uses effects of both scopes. There is no content-type-level default for `scope`.
 
 ## Competing options
 

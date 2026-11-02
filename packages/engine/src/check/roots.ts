@@ -95,6 +95,7 @@ export const ALL_ROOTS = new Set([
   'roll',
   'character',
   'links',
+  'applier',
   'copy',
   'grant',
   'entry',
@@ -267,7 +268,7 @@ export function revealComputed(self: FType | undefined, names?: string[]): FType
 
 /** `character.applied`: the saved entries, raw; `state` is `dyn`. */
 export const APPLIED_ENTRY: ObjectType = {
-  object: { id: 'string', source: 'string', active: 'bool', state: 'dyn' },
+  object: { id: 'string', source: 'string', active: 'bool', appliedBy: 'string', state: 'dyn' },
 };
 
 export const CHARACTER: ObjectType = {
@@ -282,7 +283,7 @@ export const CHARACTER: ObjectType = {
 
 /** Open: an item may declare more state keys than its type. */
 export function entryType(type: ContentTypeDef | undefined): FType {
-  return { open: true, object: { id: 'string', ...declTypes(type?.state) } };
+  return { open: true, object: { id: 'string', appliedBy: 'string', ...declTypes(type?.state) } };
 }
 export const OWN_CHOICE: ObjectType = {
   object: { ...PENDING_CHOICE.object, picks: { list: 'dyn' } },

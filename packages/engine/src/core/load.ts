@@ -35,7 +35,7 @@ import {
   thenToSelf,
   type EnumAddress,
 } from './pack-types.ts';
-import { bandSet, stepArms } from './pack-types.ts';
+import { bandSet, innerSteps, stepArms } from './pack-types.ts';
 import type { PackRelease } from './release.ts';
 import { expandFamilies } from './families.ts';
 import {
@@ -82,6 +82,8 @@ const COPY_ONLY = [
   'suppress',
 ] as const;
 const BUILT_IN_MEMBER_KINDS = new Set(['field', 'tag', 'string']);
+/** The changes a step or follow-up may send `to: applied`. */
+const APPLIED_ROUTE = new Set(['removeEffect', 'toggleEffect', 'setState', 'adjustState']);
 
 const isObj = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -477,6 +479,11 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
     },
     /** Changes sent to a link are the linked character's, so they must already be qualified. */
     changes(changes: ProposedChange[], pack: string, to?: Destination): ProposedChange[] {
+      // A change for every holder of the actor's entries names them by query.
+      if (to === 'applied')
+        for (const c of changes)
+          if (!APPLIED_ROUTE.has(c.type) || c.applied === undefined)
+            err('invalid-applied-change', { type: c.type, pack });
       if (typeof to === 'object') {
         for (const c of changes) {
           if (typeof c.field === 'string' && !c.field.includes(':'))
@@ -598,6 +605,8 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
         ...(def.on ? { on: { ...def.on, field: q.field(def.on.field, pack) } } : {}),
         ...(def.changes ? { changes: q.changes(def.changes, pack, def.to) } : {}),
       };
+      if (def.to === 'applied' && def.changes === undefined)
+        err('invalid-applied-change', { followUp: def.id, pack });
       if (def.create) {
         // The start is resolved once every start is loaded (createOffers).
         if (
@@ -678,7 +687,7 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
         ...(Array.isArray(step.options) ? step.options.map((o) => o.to) : []),
       ];
       for (const to of destinations)
-        if (typeof to === 'string' && to !== 'self' && to !== 'target' && !declared(to))
+        if (typeof to === 'string' && !['self', 'target', 'applied'].includes(to) && !declared(to))
           err('unknown-role', { role: to, step: step.id, pack });
       // An `each` branch step's case steps run per participant already.
       if (step.kind === 'branch' && step.each !== undefined) {
@@ -783,8 +792,26 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
         results: Array.isArray(results) ? results : { bands: q.bands(results.bands, pack) },
       };
     },
+    /** A clock action runs on every character with nothing the app must make up. */
+    clock(def: ActionDef, pack: string, content: boolean): void {
+      // `applied` is a destination, never a role.
+      if (Object.hasOwn(def.participants ?? {}, 'applied'))
+        err('invalid-applied-change', { action: def.id, role: 'applied', pack });
+      if (def.clock === undefined) return;
+      const bad = (data: Record<string, unknown> = {}) =>
+        err('invalid-clock-action', { action: def.id, pack, ...data });
+      if (content || def.listed === false) bad();
+      for (const [name, decl] of Object.entries(def.params ?? {})) {
+        if ((name === 'ended' || name === 'started') && decl.type !== 'string')
+          bad({ param: name });
+        else if (decl.default === undefined && !decl.optional) bad({ param: name });
+      }
+      for (const [role, decl] of Object.entries(def.participants ?? {}))
+        if ((decl.min ?? 0) > 0) bad({ role });
+    },
     actionDef(def: ActionOrUse, pack: string): ActionOrUse {
       if ('use' in def) return { ...def, use: q.actionId(def.use, pack) };
+      q.clock(def, pack, true);
       q.releases(def.steps, pack);
       return {
         ...def,
@@ -819,6 +846,24 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
     if (raw.immuneTo) out.immuneTo = raw.immuneTo.map((i) => q.immunity(i, pack));
     if (raw.choices) out.choices = q.choices(raw.choices, pack, raw.id ?? 'content');
     if (raw.effects) out.effects = raw.effects.map((e) => q.effect(e, pack));
+    if (raw.auras) {
+      // An aura's effects are on whoever is inside: `scope: applied`, whatever they leave out.
+      const seen = new Set<string>();
+      out.auras = raw.auras.map((aura) => {
+        if (seen.has(aura.id)) err('invalid-aura', { item: raw.id, aura: aura.id, pack });
+        seen.add(aura.id);
+        for (const e of aura.effects)
+          if ((e.scope ?? 'applied') !== 'applied')
+            err('invalid-aura', { item: raw.id, aura: aura.id, pack });
+        // The holder uses the item's pack, so each declared field is one of its fields.
+        for (const [field, decl] of Object.entries(aura.fields ?? {})) {
+          const found = resolveField(ruleset, field, pack);
+          if (!found || ruleset.fields[found]?.type !== decl.type)
+            err('link-field-mismatch', { link: `${raw.id}#${aura.id}`, field, pack });
+        }
+        return { ...aura, effects: aura.effects.map((e) => q.effect(e, pack)) };
+      });
+    }
     if (raw.followUps) {
       const own = itemActions(raw, pack);
       out.followUps = raw.followUps.map((fu) => q.followUp(fu, pack, own));
@@ -901,6 +946,7 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
     }
   }
   for (const [qid, def] of Object.entries(ruleset.rules.actions)) {
+    q.clock(def, def.pack, false);
     q.releases(def.steps, def.pack);
     ruleset.rules.actions[qid] = {
       ...def,
@@ -908,6 +954,30 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
       steps: q.steps(def.steps, def.pack, def.participants),
       ...q.results(def.results, def.pack),
     };
+  }
+  // A clock action never pauses for the app: no choice, allocate or handoff step, in it or in a
+  // rules action it runs.
+  for (const def of Object.values(ruleset.rules.actions)) {
+    if (def.clock === undefined) continue;
+    const seen = new Set<string>();
+    const walk = (steps: Step[]): void => {
+      for (const step of steps.flatMap((s) => [s, ...innerSteps(s)])) {
+        if (step.kind === 'choice' || step.kind === 'allocate' || step.as !== undefined)
+          err('invalid-clock-action', { action: def.id, pack: def.pack, step: step.id });
+        const used =
+          step.kind === 'action' &&
+          step.use &&
+          step.source === undefined &&
+          step.entry === undefined
+            ? ruleset.rules.actions[step.use]
+            : undefined;
+        if (used && !seen.has(step.use as string)) {
+          seen.add(step.use as string);
+          walk(used.steps);
+        }
+      }
+    };
+    walk(def.steps);
   }
   // Creation starts: a later start with the same ID replaces the earlier one in its place.
   for (const pack of byId.values()) {
@@ -1372,7 +1442,9 @@ export function loadPacks(packs: PackRelease[], options: LoadOptions = {}): Load
     const reapply = item.reapply ?? type?.reapply;
     if (!reapply) continue;
     const state = { ...type?.state, ...item.state };
-    for (const key of [...(reapply.match ?? []), ...Object.keys(reapply.state)]) {
+    // `match` may compare the entries' appliers.
+    const matched = (reapply.match ?? []).filter((key) => key !== 'appliedBy');
+    for (const key of [...matched, ...Object.keys(reapply.state)]) {
       const decl = state[key];
       if (!decl) err('unknown-state-key', { item: item.qid, key });
       else if (reapply.state[key] === 'add' && !['integer', 'decimal'].includes(decl.type))

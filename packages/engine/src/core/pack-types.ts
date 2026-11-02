@@ -270,7 +270,7 @@ export interface FollowUp {
   when?: Formula;
   /** Advisory: dismissing it needs an override. */
   required?: boolean;
-  to?: 'self' | { link: string };
+  to?: 'self' | 'applied' | { link: string };
   action?: string;
   params?: Record<string, Formula>;
   changes?: ProposedChange[];
@@ -491,12 +491,13 @@ export interface ProposedChange {
   split?: { roll: string; by: string };
   copies?: { type: string; where?: Formula };
   limit?: number;
-  applied?: { where: Formula; limit?: number };
+  applied?: { where: Formula; limit?: number; appliedBy?: 'self' };
   picks?: { where: Formula; limit?: number };
   pick?: 'self' | 'owner';
   grant?: 'self' | 'owner';
   grants?: { where: Formula; limit?: number };
   id?: string;
+  aura?: string;
   source?: Formula;
   active?: Formula;
   state?: Record<string, Formula>;
@@ -511,6 +512,8 @@ export interface ProposedChange {
 export interface ActionDef {
   id: string;
   tags?: TagOrFormula[];
+  /** A moment of the app's clock it runs at, on every character. */
+  clock?: 'turn-boundary';
   available?: Formula;
   listed?: boolean;
   params?: Record<string, ValueDecl>;
@@ -558,12 +561,24 @@ export interface ContentTypeDef {
   nameFrom?: string;
 }
 
+/** An area the holder projects: effects on whoever is inside, applied by the app. */
+export interface Aura {
+  id: string;
+  when?: Formula;
+  size?: Formula;
+  affects?: 'all' | 'allies' | 'enemies';
+  /** The holder's fields its effects read as `applier.<field>`. */
+  fields?: Record<string, DeclaredField>;
+  effects: Effect[];
+}
+
 export interface ContentItem {
   id?: string;
   type?: string;
   override?: string;
   extends?: string;
   tags?: string[];
+  auras?: Aura[];
   removeTags?: string[];
   /** A template's string, enum or id value may be `{ formula }`. */
   fields?: Record<string, Literal | { formula: Formula }>;

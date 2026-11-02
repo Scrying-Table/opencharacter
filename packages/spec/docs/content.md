@@ -192,6 +192,52 @@ A content item ([`content-item.schema.json`](../schemas/content-item.schema.json
 | `grantOnly`      | `true`: held only through grants and picks; `addItem` of it is `not-addable`. Replaces its type's ([above](#grant-only-content))                                                                                                     |
 | `deprecated`     | `{ since, replacedBy? }`                                                                                                                                                                                                             |
 
+### Auras
+
+A content item may project **auras**: areas whose effects are on whoever is inside, such as a
+null's field, a banner, a ward. Positions are the app's, so the pack says what the aura does and
+the app says who is in it:
+
+```yaml
+# Draw Steel's Null Field: each enemy inside has its potencies lowered, and the extra effect the
+# null bought this round on top, read live from the null's sheet.
+id: abilities.null.null-field
+type: ability
+auras:
+  - id: field
+    when: nullClass.fieldActive # the null's own: is it up?
+    size: nullClass.fieldSize # how far, in the game's unit
+    affects: enemies # all (default), allies or enemies
+    fields: # the null's fields the effects read, as a link slot declares them
+      nullClass.fieldEffect: { type: string, default: none }
+    effects:
+      - { target: potency.mod, op: add, value: -1 }
+      - target: speed
+        op: add
+        value: -1
+        when: applier.nullClass.fieldEffect == 'inertial-anchor'
+```
+
+- **The holder.** computeSheet lists each aura of its active holder content whose `when` holds,
+  in `auras`, with `size` evaluated and `affects` ([engine-interface.md](engine-interface.md#computesheet)).
+  `when` and `size` see the item's `item` and `self`.
+- **Who is inside.** The app applies the aura's entry to each creature as it enters:
+  `applyEffect` with `source` the item, `aura` the aura's ID and `appliedBy` the holder's `id`;
+  it removes the entry as the creature leaves, or when the aura drops off the holder's list. An
+  `aura` the source doesn't declare is `unknown-id`; applying the source again (`reapply`) merges
+  only into an entry of the same aura and applier, so two nulls' fields are two entries.
+- **The entry** runs only the aura's `effects`, as `scope: applied` effects (any other scope is
+  `invalid-aura` at load, as is a repeated aura ID): none of the item's own rules for its holder
+  reach the creature inside (its effects, grants, actions, prerequisites, immunities, standard
+  copies and kept templates). Its formulas see `item`, `self` (the entry) and `applier`: the holder's view, from the
+  `appliers` the app passes to the creature's calls (the holder's `computeSheet` values), its
+  declared `fields` only ([engine-core.md](engine-core.md#links)). Each declared field must be
+  a field of the item's pack with that type (`link-field-mismatch` at load), since the holder
+  uses it. The effects follow the
+  holder's state as the app passes it, with no change to the creature's file; without the view
+  they read the declared defaults.
+- Text: `<contentId>.auras.<id>.name` (optional), else the item's name.
+
 ### When content is active
 
 Content is **active** on a character, meaning its effects, grants and choices apply, when it is:
@@ -386,7 +432,8 @@ reapply:
 
 `state` names, per state key, how the existing entry's value and the new one merge: `highest`,
 `lowest`, `add` (numeric keys) or `replace` (the new value). `match` names state keys that must
-be equal as well. Every key must be a declared state key of the content (`unknown-state-key` at
+be equal as well; `appliedBy` in it compares the entries' appliers, so two creatures' taunts stay
+two entries. The merged entry takes the new applier. Every key must be a declared state key of the content (`unknown-state-key` at
 load; `add` on a key that isn't a number is `wrong-type`). applyChanges merges instead of adding
 an entry ([engine-core.md](engine-core.md#applychanges)).
 

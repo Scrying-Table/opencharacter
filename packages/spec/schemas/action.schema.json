@@ -17,6 +17,10 @@
       "description": "When the action is offered, e.g. `self.equipped`.",
       "$ref": "formula.schema.json#/$defs/condition"
     },
+    "clock": {
+      "description": "A moment the app runs this rules action at, on every character it applies to: `turn-boundary`, at each turn change, on every character in the encounter, with `params.ended` the `id` of the character whose turn ended and `params.started` the one whose turn starts (each left out when there is none). It runs with nothing the app must make up and never pauses: every parameter has a default or is `optional` (`ended` and `started` are strings), no role has a minimum, it is listed, and neither it nor a rules action it runs has a choice, allocate or handoff step; rolls roll with the app's dice function under the default policy. Content's actions can't have one (`invalid-clock-action` at load). computeSheet lists it with its `clock`. Content joins in through its tagged `changes` steps: resetting what lasts a turn, ending what the creature whose turn starts applied until then (`self.appliedBy == params.started`).",
+      "enum": ["turn-boundary"]
+    },
     "listed": {
       "description": "`false`: computeSheet doesn't list the action and apps don't show it, but an `action` step with `source` or `entry` still runs it (while `available` holds), and so does `startAction`. For an action only other actions run: a class's part of a shared rules action. Default `true`.",
       "type": "boolean"
@@ -37,7 +41,7 @@
       "propertyNames": {
         "$ref": "common.schema.json#/$defs/name",
         "not": {
-          "const": "self"
+          "enum": ["self", "applied"]
         }
       },
       "additionalProperties": {
@@ -1075,7 +1079,7 @@
       "additionalProperties": false
     },
     "destination": {
-      "description": "Who proposed changes are for: `self` (the actor), `target` (another character the app picks, or the action's `target` participants), a declared role, or `{ link: <slot> }`, the character filling one of the actor's link slots. The app applies each to that character. A change for a role names its participant in `character`: the current one in an `each` step over the role, else one copy per participant. A change sent to a link names fields and content by qualified ID, since they are the linked character's.",
+      "description": "Who proposed changes are for: `self` (the actor), `target` (another character the app picks, or the action's `target` participants), a declared role, `{ link: <slot> }`, the character filling one of the actor's link slots, or `applied`, every character holding an entry the actor applied. The app applies each to that character. A change for a role names its participant in `character`: the current one in an `each` step over the role, else one copy per participant. A change sent to a link names fields and content by qualified ID, since they are the linked character's. A change sent `to: applied` carries no `character`: it must be a removeEffect, toggleEffect, setState or adjustState naming applied entries by query (`invalid-applied-change` at load otherwise); the engine limits the query to the entries the actor applied (`appliedBy`), and the app applies it to every character that may hold one, where it matches nothing else.",
       "anyOf": [
         {
           "$ref": "common.schema.json#/$defs/name"

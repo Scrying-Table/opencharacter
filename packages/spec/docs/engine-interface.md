@@ -17,7 +17,7 @@ Every engine, the TypeScript reference engine and community ports alike, exposes
 
 The spec leaves these to the app. Packs give the app what it needs for each: an action to run, a field to show, a constraint that names what's missing.
 
-- **The clock:** whose turn it is, rounds and initiative, the start and end of a turn, rests, dawn, and how many hours or days pass. Packs give an action for each point in time (a rest, a scene's end, a legendary-action reset, dawn); the app runs it when that time comes.
+- **The clock:** whose turn it is, rounds and initiative, the start and end of a turn, rests, dawn, and how many hours or days pass. Packs give an action for each point in time (a rest, a scene's end, a legendary-action reset, dawn); the app runs it when that time comes. A rules action with `clock: turn-boundary` is run on every character in the encounter at each turn change, with the `id`s of the characters whose turn ended and started ([dice-and-actions.md](dice-and-actions.md#turn-boundaries)).
 - **Money a pack doesn't track:** coins, prices and paying for things. A pack that tracks wealth does so with fields and actions.
 - **Space and range:** zones, maps, distance, and who is within an aura's or a spell's area. An action's participants are whoever the app passes; packs give ranges and areas as data.
 - **The GM's rulings:** who takes a consequence, and the order of rolls in an exchange. Actions take whoever the app names and an opposition as a parameter.
@@ -58,7 +58,8 @@ Besides these calls, `checkRelease` ([upgrades.md](upgrades.md#the-build-check),
 - `effects` lists active effects; effects excluded by stacking have `suppressed: true`.
 - `actions` lists the actions available now, with the entry each belongs to: an action inline on
   an item or its content type as `<item id>#<action id>`, one a `use` offers under the used rules
-  action. [describeAction](#describeaction) gives any of them with its parameters.
+  action. A rules action the app runs at a moment of its clock carries `clock`
+  (`turn-boundary`). [describeAction](#describeaction) gives any of them with its parameters.
 - `groups` lists the display groups, each with whether it is shown and its members: a fields
   group's fields, an actions group's `actions` indices, a content group's `items` (activations
   or applied entries, in section and sort order). Each entry of `activations` names its state
@@ -76,6 +77,9 @@ Besides these calls, `checkRelease` ([upgrades.md](upgrades.md#the-build-check),
   `activate: false` choices included; `preset: true` marks a choice a grant answers, which
   `choose` and `unchoose` refuse (`preset-choice`) ([engine-core.md](engine-core.md#the-choice-list)).
 - `competing` lists competing options, one entry per competing group with its `op` and, for a stacking group, `stackKey` (see [effects.md](effects.md#competing-options)); a group of a key spanning fields also lists `fields`, and each option its `values` per field. The input's `competing` is a list of picked option IDs; each group applies its listed option, else its recommendation.
+- `auras` lists the auras the character projects now (`{ source, aura, entry?, size?, affects }`):
+  the app applies an entry of each, `appliedBy` the character, to whoever is inside, and removes
+  it as they leave or the aura drops off this list ([content.md](content.md#auras)).
 - `issues` lists rules issues.
 - `copies` maps each copy's instance ID to its computed values (`{ <name>: value }`), for copies that have any.
 - `activationValues` lists the computed values of picked and granted content, as
@@ -116,10 +120,12 @@ Besides these calls, `checkRelease` ([upgrades.md](upgrades.md#the-build-check),
   ([engine-actions.md](engine-actions.md#rolling)).
 - Each of a finished result's `proposedChanges` is `{ to, character?, step, change }`: `step` is
   the path of the `changes` step that proposed it (or of a roll step, for a roll effect's
-  `then`). `to` is `self`, `target`, a role of the action
-  or `{ link }` (a qualified slot ID). A change for a link carries the linked character's ID as
-  `character`, and one for a role its participant's view `id`. The app applies each change to
-  that character.
+  `then`). `to` is `self`, `target`, a role of the action,
+  `{ link }` (a qualified slot ID) or `applied`. A change for a link carries the linked
+  character's ID as `character`, and one for a role its participant's view `id`. The app applies
+  each change to that character. A change `to: applied` carries none: it names applied entries by
+  a query limited to the actor's (`applied.appliedBy`), and the app applies it to every character
+  that may hold one. Every proposed `applyEffect` carries the actor's ID as `appliedBy`.
 - `participants` passes the other characters taking part, by role the action
   declares: per role, a list of views `{ id, values }` taken from their own `computeSheet`, read
   like a link's. An undeclared role or a count outside the role's `min` and `max` is
@@ -151,6 +157,13 @@ of the characters filling the character's link slots, by qualified slot ID, each
 `{ id, values }`. The app takes `values` from that character's own
 `computeSheet` and may pass all of them; the engine reads only the declared fields. `upgrade`
 takes none: it changes saved state only. See [engine-core.md](engine-core.md#links).
+
+### Appliers
+
+The same calls, and `describeAction`, take optional `appliers`: views (`{ id, values }`) of the
+characters whose auras the character is in, from their own `computeSheet`. An aura entry's
+effects read the one whose `id` is the entry's `appliedBy` as `applier`
+([content.md](content.md#auras)); without it, the aura's declared defaults.
 
 ### listOptions
 
@@ -226,6 +239,9 @@ The change types are a small, generic, fixed set ([data](../data/change-types.js
   ([engine-core.md](engine-core.md#applychanges)). Actions can't propose it.
 - `setQuantity` and `adjustQuantity` change a copy's `quantity` (spending an arrow, buying ten more). It never goes below 0, and a copy at 0 stays: removing it is a separate `removeItem`.
 - `setState`, `adjustState`, `setQuantity`, `adjustQuantity`, `equip` and `removeItem` may name their copies with a query (`copies: { type, where }`) instead of one `entry`. The receiving character resolves it, so an action can aim one at its target's copies ([engine-core.md](engine-core.md#applychanges)).
+- `applyEffect` may name who applies it (`appliedBy`, a character ID saved on the entry; actions
+  fill it in), and `removeEffect`, `toggleEffect`, `setState` and `adjustState` queries may keep
+  to one applier's entries (`applied.appliedBy`).
 - `applyEffect` may leave out `id`, and `removeEffect`, `toggleEffect`, `setState` and `adjustState` may name applied entries with a query (`applied: { where, limit? }`). The receiving character picks the ID and resolves the query, so an action can apply a condition to its target, or end or worsen one, without knowing the target's file ([engine-core.md](engine-core.md#applychanges)).
 - `setState` and `adjustState` also change a pick's state (`path` and `option`, or `picks: { where }`) and the saved state of content a holder grant makes active (`grant` beside the copy's `entry` or the pick's `path` and `option`, or `grants: { where }`); a grant not active there is `not-granted` ([engine-core.md](engine-core.md#applychanges)).
 

@@ -88,6 +88,15 @@ actions:
     results: [done]
     steps:
       - { id: done, kind: outcome, result: "'done'" }
+  # A clock action with a parameter the app can't fill, unlisted, asking a choice.
+  - id: tick
+    clock: turn-boundary
+    listed: false
+    params:
+      by: { type: integer }
+    steps:
+      - { id: tock, kind: changes, changes: [{ type: adjust, field: abilities.str.score, by: 1 }] }
+      - { id: which, kind: choice, options: [{ id: one }, { id: two }] }
   - id: heist
     # Roles: a declared field the pack lacks, an undeclared role in `each` and
     # in `to`.
@@ -102,6 +111,12 @@ actions:
       - id: tip
         kind: changes
         to: accomplice
+        changes:
+          - { type: adjust, field: abilities.str.score, by: 1 }
+      # A change for every holder of the actor's entries that names none.
+      - id: shun
+        kind: changes
+        to: applied
         changes:
           - { type: adjust, field: abilities.str.score, by: 1 }
       # Applied content: an unknown literal source, an entry named both ways,

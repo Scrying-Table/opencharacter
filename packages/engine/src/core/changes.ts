@@ -34,6 +34,7 @@ import {
   type ChoicePath,
   type ChoiceRecord,
   type EffectInstance,
+  type Appliers,
   Failure,
   type Links,
   type RulesIssue,
@@ -141,8 +142,19 @@ export function applyChanges(
   strict = false,
   links: Links = {},
   dice?: DiceFunction,
+  appliers: Appliers = [],
 ): ApplyResult {
-  return applyBatch(ruleset, character, changes, strict, links, dice);
+  return applyBatch(ruleset, character, changes, strict, links, dice, undefined, appliers);
+}
+
+/** The other characters' views a batch was given: its link views and applier views. */
+interface Views {
+  links: Links;
+  appliers: Appliers;
+}
+
+function sheetOf(ruleset: Ruleset, c: CharacterDoc, views: Views): Sheet {
+  return new Sheet(ruleset, c, [], views.links, undefined, views.appliers);
 }
 
 /** Sheets by ruleset and character JSON: an action's successive batches revisit the same ones. */
@@ -160,7 +172,9 @@ export function applyBatch(
   links: Links = {},
   dice?: DiceFunction,
   sheets?: BatchSheets,
+  appliers: Appliers = [],
 ): ApplyResult {
+  const views: Views = { links, appliers };
   // A batch that starts by replacing the homebrew doesn't load the old one, so a homebrew that
   // stopped loading can be fixed.
   const base = withoutHomebrew(ruleset);
@@ -202,10 +216,8 @@ export function applyBatch(
     try {
       // The copies picks hold now: a change that removes their picks removes them too.
       const held =
-        pickLinks(next).size > 0
-          ? [...new Sheet(ruleset, next, [], links).pickedCopies().keys()]
-          : [];
-      const patch = applyOne(ruleset, next, change as AnyChange, adjustments, links, dice, sheets);
+        pickLinks(next).size > 0 ? [...sheetOf(ruleset, next, views).pickedCopies().keys()] : [];
+      const patch = applyOne(ruleset, next, change as AnyChange, adjustments, views, dice, sheets);
       if (held.length > 0) dropUnpicked(next, held);
       // An adjust comes back with the faces it used, an applyEffect with its computed state.
       applied.push(patch ? ({ ...change, ...patch } as Change) : change);
@@ -220,8 +232,8 @@ export function applyBatch(
       };
     }
   }
-  let sheet = new Sheet(ruleset, next, [], links);
-  if (dropDefaultStandard(ruleset, sheet, next)) sheet = new Sheet(ruleset, next, [], links);
+  let sheet = sheetOf(ruleset, next, views);
+  if (dropDefaultStandard(ruleset, sheet, next)) sheet = sheetOf(ruleset, next, views);
   const issues = sheet.issues();
   if (strict && issues.length > 0)
     return { ok: false, errors: [{ code: 'rules-issue', data: { issues } }], issues };
@@ -373,7 +385,7 @@ function applyToCopies(
   c: CharacterDoc,
   change: AnyChange,
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
 ): void {
   const query = change.copies as { type: string; where?: Formula };
   const type = ruleset.contentTypes[query.type];
@@ -418,7 +430,7 @@ function applyToCopies(
     if (change.by !== undefined) one.by = f.toData(evaluate(change.by as Formula, roots));
     if (change.value !== undefined && change.value !== null)
       one.value = f.toData(evaluate(change.value as Formula, roots));
-    applyOne(ruleset, c, one, adjustments, links);
+    applyOne(ruleset, c, one, adjustments, views);
   }
   adjustments.push({ copies: matches.map((m) => m.id) });
 }
@@ -458,9 +470,9 @@ function applyToApplied(
   c: CharacterDoc,
   change: AnyChange,
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
 ): void {
-  const query = change.applied as { where: Formula; limit?: number };
+  const query = change.applied as { where: Formula; limit?: number; appliedBy?: string };
   const evaluate = (formula: Formula, pack: string, roots: Record<string, unknown>) => {
     try {
       return sheet.evaluate(formula, pack, roots);
@@ -476,6 +488,7 @@ function applyToApplied(
   const matches: { id: string; pack: string; roots: Record<string, unknown> }[] = [];
   for (const entry of c.applied ?? []) {
     if (query.limit !== undefined && matches.length >= query.limit) break;
+    if (query.appliedBy !== undefined && entry.appliedBy !== query.appliedBy) continue;
     const item = ruleset.content[entry.source];
     if (!item) continue;
     const pack = ruleset.contentTypes[item.type]?.pack ?? item.pack;
@@ -495,7 +508,7 @@ function applyToApplied(
     if (change.by !== undefined) one.by = f.toData(evaluate(change.by as Formula, pack, roots));
     if (change.value !== undefined)
       one.value = f.toData(evaluate(change.value as Formula, pack, roots));
-    applyOne(ruleset, c, one, adjustments, links);
+    applyOne(ruleset, c, one, adjustments, views);
   }
   adjustments.push({ applied: matches.map((m) => m.id) });
 }
@@ -507,7 +520,7 @@ function applyToPicks(
   c: CharacterDoc,
   change: AnyChange,
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
 ): void {
   const query = change.picks as { where: Formula; limit?: number };
   const evaluate = (formula: Formula, pack: string, roots: Record<string, unknown>) => {
@@ -561,7 +574,7 @@ function applyToPicks(
     if (change.by !== undefined) one.by = f.toData(evaluate(change.by as Formula, pack, roots));
     if (change.value !== undefined)
       one.value = f.toData(evaluate(change.value as Formula, pack, roots));
-    applyOne(ruleset, c, one, adjustments, links);
+    applyOne(ruleset, c, one, adjustments, views);
   }
 }
 
@@ -697,7 +710,7 @@ function applyToGrants(
   c: CharacterDoc,
   change: AnyChange,
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
 ): void {
   const query = change.grants as { where: Formula; limit?: number };
   const evaluate = (formula: Formula, pack: string, roots: Record<string, unknown>) => {
@@ -737,7 +750,7 @@ function applyToGrants(
     if (change.by !== undefined) one.by = f.toData(evaluate(change.by as Formula, pack, roots));
     if (change.value !== undefined)
       one.value = f.toData(evaluate(change.value as Formula, pack, roots));
-    applyOne(ruleset, c, one, adjustments, links);
+    applyOne(ruleset, c, one, adjustments, views);
   }
 }
 
@@ -749,12 +762,12 @@ function appliedId(c: CharacterDoc, sheet: Sheet, source: string): string {
   return `${stem}-${n}`;
 }
 
-function keptSheet(sheets: BatchSheets, ruleset: Ruleset, c: CharacterDoc, links: Links): Sheet {
+function keptSheet(sheets: BatchSheets, ruleset: Ruleset, c: CharacterDoc, views: Views): Sheet {
   let byCharacter = sheets.get(ruleset);
   if (!byCharacter) sheets.set(ruleset, (byCharacter = new Map()));
   const key = JSON.stringify(c);
   let sheet = byCharacter.get(key);
-  if (!sheet) byCharacter.set(key, (sheet = new Sheet(ruleset, structuredClone(c), [], links)));
+  if (!sheet) byCharacter.set(key, (sheet = sheetOf(ruleset, structuredClone(c), views)));
   return sheet;
 }
 
@@ -763,31 +776,31 @@ function applyOne(
   c: CharacterDoc,
   change: AnyChange,
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
   dice?: DiceFunction,
   sheets?: BatchSheets,
 ): Record<string, unknown> | undefined {
   const sheet =
     sheets && READ_FIRST.has(change.type)
-      ? keptSheet(sheets, ruleset, c, links)
-      : new Sheet(ruleset, c, [], links);
+      ? keptSheet(sheets, ruleset, c, views)
+      : sheetOf(ruleset, c, views);
   if (change.copies !== undefined && PER_COPY.has(change.type)) {
-    applyToCopies(ruleset, sheet, c, change, adjustments, links);
+    applyToCopies(ruleset, sheet, c, change, adjustments, views);
     return;
   }
   if (change.picks !== undefined && (change.type === 'setState' || change.type === 'adjustState')) {
-    applyToPicks(ruleset, sheet, c, change, adjustments, links);
+    applyToPicks(ruleset, sheet, c, change, adjustments, views);
     return;
   }
   if (
     change.grants !== undefined &&
     (change.type === 'setState' || change.type === 'adjustState')
   ) {
-    applyToGrants(ruleset, sheet, c, change, adjustments, links);
+    applyToGrants(ruleset, sheet, c, change, adjustments, views);
     return;
   }
   if (change.applied !== undefined && PER_APPLIED.has(change.type)) {
-    applyToApplied(ruleset, sheet, c, change, adjustments, links);
+    applyToApplied(ruleset, sheet, c, change, adjustments, views);
     return;
   }
   const str = (key: string) => change[key] as string;
@@ -845,7 +858,7 @@ function applyOne(
           supplied: supplied.length,
           used: rolling.next,
         });
-      applyThen(ruleset, sheet, c, counted, adjustments, links);
+      applyThen(ruleset, sheet, c, counted, adjustments, views);
       return rolling.used.length > 0 ? { faces: rolling.used } : undefined;
     }
     case 'addItem': {
@@ -882,7 +895,7 @@ function applyOne(
       }
       if (type?.carried) c.inventory = [...(c.inventory ?? []), entry];
       else c.features = [...(c.features ?? []), entry];
-      if (entry.choices) checkPicks(ruleset, new Sheet(ruleset, c, [], links), entry);
+      if (entry.choices) checkPicks(ruleset, sheetOf(ruleset, c, views), entry);
       return;
     }
     case 'removeItem': {
@@ -1034,6 +1047,9 @@ function applyOne(
       const source = str('source');
       const item = ruleset.content[source];
       if (!item || item.type === 'template') throw new ChangeError('unknown-id', { id: source });
+      const aura = change.aura === undefined ? undefined : str('aura');
+      if (aura !== undefined && !item.auras?.some((a) => a.id === aura))
+        throw new ChangeError('unknown-id', { id: `${source}#${aura}` });
       const view = itemView(ruleset, item, [], (n, p) => sheet.inputValue(`${p}:${n}`));
       const pack = ruleset.contentTypes[item.type]?.pack ?? item.pack;
       // A `{ formula }` value is evaluated now, with `item` the source's item and `batch`.
@@ -1069,7 +1085,8 @@ function applyOne(
             decl,
             num(typedValue(decl, state[key]) as f.Value),
           );
-      const merged = reapplied(ruleset, sheet, c, item, view, pack, state);
+      const by = change.appliedBy === undefined ? undefined : str('appliedBy');
+      const merged = reapplied(ruleset, sheet, c, item, view, pack, state, by, aura);
       if (merged !== undefined) {
         adjustments.push({ applied: [merged] });
         return computed ? { state } : undefined;
@@ -1081,6 +1098,8 @@ function applyOne(
         source,
         ...(change.active !== undefined ? { active: change.active as boolean } : {}),
         ...(change.state ? { state } : {}),
+        ...(aura !== undefined ? { aura } : {}),
+        ...(by !== undefined ? { appliedBy: by } : {}),
       };
       c.applied = [...(c.applied ?? []), applied];
       return computed ? { state } : undefined;
@@ -1138,7 +1157,7 @@ function applyOne(
           c,
           { type: 'addItem', entry: { id, item: option } },
           adjustments,
-          links,
+          views,
           dice,
           sheets,
         );
@@ -1300,6 +1319,8 @@ function reapplied(
   view: Record<string, unknown>,
   pack: string,
   state: Record<string, Literal>,
+  appliedBy: string | undefined,
+  aura: string | undefined,
 ): string | undefined {
   const reapply = item.reapply ?? ruleset.contentTypes[item.type]?.reapply;
   if (!reapply) return undefined;
@@ -1322,8 +1343,15 @@ function reapplied(
   const existing = (c.applied ?? []).find(
     (a) =>
       a.source === item.qid &&
+      a.aura === aura &&
       a.active !== false &&
-      (reapply.match ?? []).every((key) => same(valueOf(a.state, key), valueOf(state, key))),
+      // An aura's entry is one per applier.
+      (aura === undefined || a.appliedBy === appliedBy) &&
+      (reapply.match ?? []).every((key) =>
+        key === 'appliedBy'
+          ? a.appliedBy === appliedBy
+          : same(valueOf(a.state, key), valueOf(state, key)),
+      ),
   );
   if (!existing) return undefined;
   const next: Record<string, Literal> = { ...existing.state };
@@ -1348,6 +1376,7 @@ function reapplied(
     next[key] = raw;
   }
   existing.state = next;
+  if (appliedBy !== undefined) existing.appliedBy = appliedBy;
   return existing.id;
 }
 
@@ -1757,7 +1786,7 @@ function applyThen(
   c: CharacterDoc,
   counted: EffectInstance[],
   adjustments: Adjustment[],
-  links: Links,
+  views: Views,
 ): void {
   const removed = new Set<string>();
   for (const i of counted.toSorted((a, b) => a.order - b.order)) {
@@ -1779,7 +1808,7 @@ function applyThen(
       if (entry !== undefined && removed.has(entry)) break;
       if (then.type === 'removeEffect') {
         if (i.applied === undefined || entry === undefined) continue;
-        applyOne(ruleset, c, { type: 'removeEffect', id: entry }, adjustments, links);
+        applyOne(ruleset, c, { type: 'removeEffect', id: entry }, adjustments, views);
         removed.add(entry);
         adjustments.push({ entry, removed: true, source });
         continue;
@@ -1796,7 +1825,7 @@ function applyThen(
       if (then.by !== undefined) one.by = evaluate(then.by);
       if (own === undefined) {
         one.entry = entry;
-        applyOne(ruleset, c, one, adjustments, links);
+        applyOne(ruleset, c, one, adjustments, views);
         const at = [...allEntries(c), ...(c.applied ?? [])].find((e) => e.id === entry);
         adjustments.push({
           entry: entry as string,
@@ -1806,7 +1835,7 @@ function applyThen(
         });
       } else if ('pick' in own) {
         const { path, option } = own.pick;
-        applyOne(ruleset, c, { ...one, path, option }, adjustments, links);
+        applyOne(ruleset, c, { ...one, path, option }, adjustments, views);
         const pick = (treeFor(c, path, false)?.[String(path.choice.at(-1))] ?? []).find(
           (p) => p.option === option,
         );
@@ -1816,7 +1845,7 @@ function applyThen(
       } else {
         let value: Literal;
         try {
-          value = setGrantState(ruleset, new Sheet(ruleset, c, [], links), c, {
+          value = setGrantState(ruleset, sheetOf(ruleset, c, views), c, {
             ...one,
             ...own.grant,
           });

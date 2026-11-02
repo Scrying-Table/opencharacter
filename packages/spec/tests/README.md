@@ -142,7 +142,10 @@ input: # any other call inputs (action, params, situational, policy, strict, lin
   choice recommending among its eligible options, picks active only while a condition holds
   (`activeWhen`), picks held as copies (`addAs: copy`), an inline option's immunity and
   allocations recommended per field, `test-span-stacking`, stack keys spanning fields (one kit's
-  bonus on every tier), and `test-content-values`, computed values on picked and granted content.
+  bonus on every tier), `test-content-values`, computed values on picked and granted content,
+  and `test-cross`, effects that cross between characters (who
+  applied an entry, changes `to: applied`, clock actions, auras, a pool spent through a link),
+  with `test-party`, the shared party sheet it links.
 - **How outputs compare.** Only what `expected.yaml` lists is compared. A key the call doesn't
   define, in `case.yaml` or `expected.yaml`, is a mistake in the case: runners fail it rather
   than ignore it, so a case never seems to test something it doesn't.
@@ -156,7 +159,7 @@ input: # any other call inputs (action, params, situational, policy, strict, lin
     - `pendingSlots`: the exact list of the pending choices' `slot` (`{ choice, number }`), in
       order, `null` for a choice without slots.
     - `issues`: the exact list of `{ code, id }`, in order.
-    - `actions`: the exact list of `{ action, entry, source }`.
+    - `actions`: the exact list of `{ action, entry, source, clock }`.
     - `situational`: the exact list of offered situational choice IDs, in order.
     - `competing`: for each listed field, every entry for that field, in order, comparing `op`,
       `stackKey`, `fields`, `options` (option IDs, or `{ id, value }` to compare values too, or

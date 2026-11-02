@@ -1,0 +1,111 @@
+tags: [damage, turn.boundary]
+
+fields:
+  hp.current: { type: integer, input: true, default: 10, min: 0 }
+  # Each active mark on the character adds one.
+  marks: { type: integer, formula: 0 }
+  potency: { type: integer, formula: 2 }
+  speed: { type: integer, formula: 30 }
+  # The null field: up or not, how much larger, and the extra effect bought for it.
+  aura.active: { type: boolean, input: true, default: false }
+  aura.extra: { type: integer, input: true, default: 0, min: 0 }
+  aura.effect: { type: string, input: true, default: none }
+
+# The party sheet every hero links: its pool of hero tokens.
+links:
+  party:
+    pack: test-party
+    fields:
+      tokens: { type: integer, default: 0 }
+
+contentTypes:
+  condition:
+    carried: false
+    state:
+      # When the entry ends: at the start of its applier's next turn, or with the encounter.
+      until: { type: enum, values: [start, encounter], default: encounter }
+    # A mark by someone else takes the mark over.
+    reapply: { state: { until: replace } }
+  feature:
+    carried: false
+
+actions:
+  # Marks the target, ending the actor's earlier marks wherever they are.
+  - id: mark
+    params:
+      until: { type: enum, values: [start, encounter], default: encounter }
+    participants:
+      target: { max: 1 }
+    steps:
+      - id: unmark
+        kind: changes
+        to: applied
+        changes:
+          - type: removeEffect
+            applied: { where: 'item.id == @conditions.marked' }
+      - id: mark
+        kind: changes
+        to: target
+        changes:
+          - type: applyEffect
+            source: "'conditions.marked'"
+            state: { until: params.until }
+  # Run on every character at each turn change: what the creature whose turn starts applied until
+  # then ends; content resets what lasts a turn (the step's tag).
+  - id: turn-boundary
+    clock: turn-boundary
+    params:
+      ended: { type: string, optional: true }
+      started: { type: string, optional: true }
+    steps:
+      - id: boundary
+        kind: changes
+        tags: [turn.boundary]
+        changes:
+          - type: removeEffect
+            when: has(params.started)
+            applied: { where: "self.appliedBy == params.started && self.until == 'start'" }
+  # Spends one of the party's hero tokens to regain 2 hit points.
+  - id: spend-token
+    available: has(links.party) && links.party.tokens > 0
+    steps:
+      - id: spend
+        kind: changes
+        to: { link: party }
+        changes:
+          - { type: adjust, field: 'test-party:tokens', by: -1 }
+      - id: regain
+        kind: changes
+        changes:
+          - { type: adjust, field: hp.current, by: 2 }
+  # Asks how to move first, then moves at the character's speed: pauses for the choice.
+  - id: stride-choose
+    steps:
+      - id: how
+        kind: choice
+        options: [{ id: walk }, { id: run }]
+      - { id: done, kind: outcome, data: { speed: speed, how: steps.how.picked } }
+  # Moves at the character's speed (an aura may slow it).
+  - id: stride
+    steps:
+      - { id: done, kind: outcome, data: { speed: speed } }
+  # Ends the actor's own marks on the target only.
+  - id: release
+    participants:
+      target: { min: 1, max: 1 }
+    steps:
+      - id: release
+        kind: changes
+        to: target
+        changes:
+          - type: removeEffect
+            applied: { where: 'item.id == @conditions.marked', appliedBy: self }
+
+followUps:
+  # At 0 hit points, the character's marks end wherever they are.
+  - id: marks-end
+    becomes: hp.current == 0
+    to: applied
+    changes:
+      - type: removeEffect
+        applied: { where: 'item.id == @conditions.marked' }

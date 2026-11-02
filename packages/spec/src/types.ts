@@ -8,6 +8,8 @@ export type Action = {
   tags?: TagList;
   /** When the action is offered, e.g. `self.equipped`. */
   available?: Condition;
+  /** A moment the app runs this rules action at, on every character it applies to: `turn-boundary`, at each turn change, on every character in the encounter, with `params.ended` the `id` of the character whose turn ended and `params.started` the one whose turn starts (each left out when there is none). It runs with nothing the app must make up and never pauses: every parameter has a default or is `optional` (`ended` and `started` are strings), no role has a minimum, it is listed, and neither it nor a rules action it runs has a choice, allocate or handoff step; rolls roll with the app's dice function under the default policy. Content's actions can't have one (`invalid-clock-action` at load). computeSheet lists it with its `clock`. Content joins in through its tagged `changes` steps: resetting what lasts a turn, ending what the creature whose turn starts applied until then (`self.appliedBy == params.started`). */
+  clock?: 'turn-boundary';
   /** `false`: computeSheet doesn't list the action and apps don't show it, but an `action` step with `source` or `entry` still runs it (while `available` holds), and so does `startAction`. For an action only other actions run: a class's part of a shared rules action. Default `true`. */
   listed?: boolean;
   /** Values the app supplies when starting the action (a target's AC, which stat to test). */
@@ -306,7 +308,7 @@ export type OutcomeStep = {
   data?: Record<string, Formula>;
 };
 
-/** Who proposed changes are for: `self` (the actor), `target` (another character the app picks, or the action's `target` participants), a declared role, or `{ link: <slot> }`, the character filling one of the actor's link slots. The app applies each to that character. A change for a role names its participant in `character`: the current one in an `each` step over the role, else one copy per participant. A change sent to a link names fields and content by qualified ID, since they are the linked character's. */
+/** Who proposed changes are for: `self` (the actor), `target` (another character the app picks, or the action's `target` participants), a declared role, `{ link: <slot> }`, the character filling one of the actor's link slots, or `applied`, every character holding an entry the actor applied. The app applies each to that character. A change for a role names its participant in `character`: the current one in an `each` step over the role, else one copy per participant. A change sent to a link names fields and content by qualified ID, since they are the linked character's. A change sent `to: applied` carries no `character`: it must be a removeEffect, toggleEffect, setState or adjustState naming applied entries by query (`invalid-applied-change` at load otherwise); the engine limits the query to the entries the actor applied (`appliedBy`), and the app applies it to every character that may hold one, where it matches nothing else. */
 export type Destination =
   | Name
   | {
@@ -468,12 +470,16 @@ export type TemplateChange = {
   template: QualifiedId;
 };
 
-/** Apply content to the character: an `applied` entry. Without `id`, applyChanges gives the entry `<source local id, dots as hyphens>-<n>`, the smallest n >= 1 that no copy, applied entry or earlier change in the batch uses. */
+/** Apply content to the character: an `applied` entry. Without `id`, applyChanges gives the entry `<source local id, dots as hyphens>-<n>`, the smallest n >= 1 that no copy, applied entry or earlier change in the batch uses. `appliedBy`, saved on the entry, is the character applying it. */
 export type ApplyEffectChange = {
   type: 'applyEffect';
   id?: InstanceId;
   source: QualifiedId;
   active?: boolean;
+  /** For an aura's entry: one of the source item's `auras`, by ID (`unknown-id` otherwise). The entry runs only that aura's effects. Applying content again merges only into an entry of the same aura. */
+  aura?: Slug;
+  /** The `id` of the character applying the entry, saved on it. Actions and follow-ups fill it in with the character proposing the change; an app applying content by hand names the applier itself. Applying content again (`reapply`) gives the merged entry this applier. */
+  appliedBy?: string;
   /** The entry's state. A value may be `{ formula }`, a formula an action passed on because it reads `batch`: applyChanges evaluates it with `item` the source's item, this character's fields and `batch`, and the change as applied (`changes` in the result) carries the value. */
   state?: Record<
     string,
@@ -624,16 +630,20 @@ export type ProposedChange = {
     where?: Condition;
   };
   limit?: CopiesLimit;
-  /** removeEffect, toggleEffect, setState and adjustState: the applied entries to change, by query, instead of `id` or `entry`. `where` and per-entry formulas (those reading `self` or `item`) are passed on for applyChanges to evaluate per entry, with `steps`, `flags`, `params` and `action` replaced by their values as literals, as for `copies`. `limit` is a literal integer >= 1. */
+  /** removeEffect, toggleEffect, setState and adjustState: the applied entries to change, by query, instead of `id` or `entry`. `where` and per-entry formulas (those reading `self` or `item`) are passed on for applyChanges to evaluate per entry, with `steps`, `flags`, `params` and `action` replaced by their values as literals, as for `copies`. `limit` is a literal integer >= 1. `appliedBy: self` limits it to the entries the actor applied, as a change sent `to: applied` always is. */
   applied?: {
     where: Condition;
     limit?: number;
+    /** `self`: only the entries the actor (the character running the action, or whose follow-up it is) applied. The proposed change carries the actor's ID. */
+    appliedBy?: 'self';
   };
   path?: ProposedPath;
   /** choose and unchoose: a formula naming the option (`picked.id`). An unchoose may leave it out to remove every pick of the choice. */
   option?: Formula;
   /** applyEffect: the new entry's instance ID (without it, applyChanges picks one); removeEffect and toggleEffect: the applied entry's. */
   id?: InstanceId;
+  /** applyEffect: the aura of the source the entry runs, by ID, passed on as written. */
+  aura?: Slug;
   /** applyEffect: a string formula naming the content to apply, qualified against the action's pack as a proposed addItem's `item` is. A source that names no content, or a template, is `unknown-reference` when the action runs; for a link, or a role or target when qualified with a pack the ruleset doesn't load, it is passed on as written. */
   source?: Formula;
   /** applyEffect and toggleEffect: a boolean formula. */
@@ -705,10 +715,12 @@ export type Grants = {
   limit?: number;
 };
 
-/** removeEffect, toggleEffect, setState and adjustState may name applied entries by query instead of `id` or `entry`. applyChanges resolves it against the character it changes, at that point in the batch: the `applied` entries, in file order, whose `where` holds with `item` the source's item and `self` the entry (`id` and its state, with declared defaults). With `limit`, only the first that many. In such a change, `by` and `value` are formulas evaluated per entry with the same binding, and formulas resolve names in the source's pack. No match is not an error: each such change adds `{ applied: [ids] }` to `adjustments`. */
+/** removeEffect, toggleEffect, setState and adjustState may name applied entries by query instead of `id` or `entry`. applyChanges resolves it against the character it changes, at that point in the batch: the `applied` entries, in file order, whose `where` holds with `item` the source's item and `self` the entry (`id` and its state, with declared defaults). With `limit`, only the first that many. In such a change, `by` and `value` are formulas evaluated per entry with the same binding, and formulas resolve names in the source's pack. No match is not an error: each such change adds `{ applied: [ids] }` to `adjustments`. With `appliedBy`, only the entries that character applied (their `appliedBy`). */
 export type Applied = {
   where: Condition;
   limit?: number;
+  /** A character ID: only the entries it applied. An action or follow-up fills it in for a change it sends `to: applied`, or one whose query says `appliedBy: self`. */
+  appliedBy?: string;
 };
 
 /** The standard interchange file for one character, monster or NPC. Holds only base state: input field values, owned content and per-copy state, choices made, and which temporary effects are on. Derived values are never saved. Every content and field reference is fully qualified (`pack:id`). */
@@ -737,6 +749,10 @@ export type CharacterFile = {
     /** Default true. */
     active?: boolean;
     state?: EntryState;
+    /** For an aura's entry: the ID of one of the source item's `auras`. The entry then runs only that aura's effects, reading its applier's view (`appliers`) as `applier`. */
+    aura?: Slug;
+    /** The `id` of the character who applied the entry: the actor of the action or the character of the follow-up that proposed the `applyEffect`, or whoever the app names. Formulas read it as `self.appliedBy`; a change sent `to: applied` reaches only the entries its actor applied. */
+    appliedBy?: string;
   }[];
   /** Ephemeral follow-ups: each `on` or `becomes` follow-up a batch triggered, stored by that applyChanges until it is acted on (`clearFollowUp`, which startAction proposes) or dismissed (`dismissFollowUp`). The engine writes them; apps change them only with those two changes. computeSheet lists each in `offers`. Derived (`while`) offers are never stored. */
   followUps?: StoredFollowUp[];
@@ -800,10 +816,12 @@ export type StoredFollowUp = {
   followUp: string;
   /** For a follow-up on content: the content and copy it comes from, as computeSheet's sources name them. */
   source?: Source;
-  /** For a follow-up to a linked character: `{ link }` with the qualified slot ID. It is stored here, on the character whose change triggered it, since one applyChanges writes one file; the app shows it to whoever runs the linked character. Absent for the character's own. */
-  to?: {
-    link: SlotId;
-  };
+  /** For a follow-up to another character, stored here, on the character whose change triggered it, since one applyChanges writes one file: `{ link }` with the qualified slot ID, for the character filling the slot (the app shows it to whoever runs that character); `applied`, for every character holding an entry this one applied (its changes reach only those entries). Absent for the character's own. */
+  to?:
+    | {
+        link: SlotId;
+      }
+    | 'applied';
   /** For a follow-up to a link: the ID of the character filling the slot when it was triggered. */
   character?: string;
   /** The parameters the follow-up fixes, evaluated when it was triggered. */
@@ -1079,11 +1097,13 @@ export type ContentItem = {
   >;
   /** Templates only: values the template's item fields read as `params.<name>`, given by the content keeping it (`keepsTemplates` `params`). A param the keeper doesn't give, or on a saved template, is its `default`, else absent. */
   params?: Record<string, ValueDecl>;
-  /** Extra per-copy state keys this item (or template) adds to the character's copy, beyond those its content type declares. */
+  /** Extra per-copy state keys this item (or template) adds to the character's copy, beyond those its content type declares. `appliedBy` is reserved, as on a content type. */
   state?: Record<string, ValueDecl>;
   /** Computed values on this item's copies, added to the content type's or replacing one of them by name. A template's are added to the copies it is applied to. */
   computed?: Record<string, ComputedDecl>;
   effects?: Effect[];
+  /** Areas the holder projects, putting effects on whoever is inside: a field, a banner, a ward. Positions are the app's: computeSheet lists each aura that is up (`auras`), the app applies its entry to each creature as it enters (`applyEffect` with `source` this item, `aura` the aura's ID and `appliedBy` the holder) and removes it as the creature leaves or the aura ends. The entry runs only the aura's `effects`, whose formulas read the holder's live values as `applier.<field>` from the view the app passes (`appliers`). Text: `<contentId>.auras.<id>.name` (optional). */
+  auras?: Aura[];
   /** Follow-ups that apply while the character has this item's copy or pick, as effects do. Their formulas see `item` and `self`. */
   followUps?: FollowUp[];
   actions?: ActionOrUse[];
@@ -1113,6 +1133,21 @@ export type ContentItem = {
   deprecated?: Deprecation;
   /** IDs of the content type's effects this item switches off. */
   suppress?: Slug[];
+};
+
+export type Aura = {
+  /** Unique among the item's auras; an applied entry names it in `aura`. */
+  id: Slug;
+  /** On the holder, with the item's `item` and `self`: whether the aura is up. Default true. */
+  when?: Condition;
+  /** On the holder: how far it reaches, in the game's own unit (squares, feet), for the app's map. */
+  size?: Formula;
+  /** Whom the app puts it on: `all` (the default), `allies` or `enemies` of the holder, as the app's sides go. */
+  affects?: 'all' | 'allies' | 'enemies';
+  /** The holder's fields its effects read as `applier.<field>`, declared as a link slot's are (a value type and a literal `default`), by field ID without the pack. Without a view of the applier, each reads its default. */
+  fields?: DeclaredFields;
+  /** The effects on each creature inside, whose entry names this aura: `scope: applied` effects (a `scope` other than `applied` is `invalid-aura` at load), seeing `item` and `self` (the entry) as an applied entry's effects do, and `applier`. */
+  effects: Effect[];
 };
 
 export type Grant = {
@@ -1179,7 +1214,7 @@ export type ContentType = {
   fields?: Record<string, ValueDecl>;
   /** A string state key whose value names each copy of this type, for copies the player or GM names (a faction added in play, a harm's "Broken leg"). While the copy's value of the key is a non-empty string, it is the copy's name: computeSheet gives it in `copyNames`, and apps show it in place of the item's name. An item's own `nameFrom` replaces the type's. */
   nameFrom?: Name;
-  /** Per-copy state on the character's copy (charges, shots, level). Visible in formulas as `self.<key>`. */
+  /** Per-copy state on the character's copy (charges, shots, level). Visible in formulas as `self.<key>`. `appliedBy` is reserved: an applied entry's `self.appliedBy` is its applier. */
   state?: Record<string, ValueDecl>;
   /** Computed values on each copy: per-copy values with a formula, worked out after every field and never saved. computeSheet returns them per copy (`copies`); the copy's own actions (and the actions it reaches through `use`) and its follow-ups read them as `self.<name>`, as do the copy's later computed values. Nothing else can read them. A name must not reuse a state key or a core property of the copy. */
   computed?: Record<string, ComputedDecl>;
@@ -1240,9 +1275,9 @@ export type ValueDecl = {
   where?: Condition;
 };
 
-/** What applying this content again does: an `applyEffect` of it, while the character has an `applied` entry of it that isn't inactive (`active` not `false`; a blocked entry counts) and whose `match` state keys are equal to the new entry's, adds no entry. Instead each key of `state` of the first such entry becomes the higher (`highest`; dice by average), the lower (`lowest`), the sum (`add`, numeric keys) or the new value (`replace`). An item's replaces its content type's. */
+/** What applying this content again does: an `applyEffect` of it, while the character has an `applied` entry of it that isn't inactive (`active` not `false`; a blocked entry counts) and whose `match` state keys are equal to the new entry's, adds no entry. Instead each key of `state` of the first such entry becomes the higher (`highest`; dice by average), the lower (`lowest`), the sum (`add`, numeric keys) or the new value (`replace`). The merged entry takes the change's `appliedBy`, when it gives one. An item's replaces its content type's. */
 export type Reapply = {
-  /** State keys whose values must be equal as well (the new entry's with their defaults against the existing one's), e.g. a persistent damage's damage type. */
+  /** State keys whose values must be equal as well (the new entry's with their defaults against the existing one's), e.g. a persistent damage's damage type. `appliedBy` compares the entries' appliers instead, so each applier keeps an entry of its own. */
   match?: Name[];
   /** Per state key, how the existing entry's value and the new one merge. Keys not named keep the existing entry's values. */
   state: Record<string, 'highest' | 'lowest' | 'add' | 'replace'>;
@@ -1827,7 +1862,7 @@ export type ActionResult =
       status: 'finished';
       outcome: Outcome;
       proposedChanges: {
-        /** `self`, `target`, a role of the action, or `{ link }` with the qualified slot ID. */
+        /** `self`, `target`, a role of the action, `{ link }` with the qualified slot ID, or `applied`: every character holding an entry the actor applied (the change's query carries `appliedBy`, so it matches only those entries; the app applies it to each character that may hold one). */
         to:
           | Name
           | {
@@ -1865,9 +1900,10 @@ export type ListedFollowUp = {
   followUp: string;
   /** For a follow-up declared on content: the content and copy it comes from, as computeSheet's sources name them. */
   source?: Source;
-  /** `self`, or `{ link }` with the qualified slot ID. */
+  /** `self`, `{ link }` with the qualified slot ID, or `applied`: every character holding an entry this one applied, which the app applies the offer's `changes` to (they reach only those entries). */
   to:
     | 'self'
+    | 'applied'
     | {
         link: SlotId;
       };
@@ -1919,6 +1955,7 @@ export type ApplyChangesInput = {
   /** Strict mode: rules issues become errors and the batch is rejected. */
   strict?: boolean;
   links?: Links;
+  appliers?: Appliers;
 };
 
 export type ApplyChangesOutput =
@@ -2040,7 +2077,11 @@ export type ComputeSheetInput = {
   /** The app's picks for competing options, as option IDs. Each competing group (the `set` effects on a field, or a `playerChooses` stacking group) applies the first of its options, in instance order, that is listed, else its recommended option. IDs that name no option are ignored. */
   competing?: string[];
   links?: Links;
+  appliers?: Appliers;
 };
+
+/** Views of the characters who applied the character's aura entries, each the applier's `id` and its computed values, taken from its own computeSheet. An aura's effects read the view whose `id` is the entry's `appliedBy` as `applier`, its declared fields only; without one they read the declared defaults. */
+export type Appliers = View[];
 
 /** Views of the characters filling the character's link slots, by qualified slot ID. The app takes each from that character's own computeSheet. The engine reads only the declared fields. */
 export type Links = Record<string, View>;
@@ -2063,6 +2104,8 @@ export type ComputeSheetOutput = {
     entry?: InstanceId;
     /** For an action of content picked in a choice or granted to the entry (not the entry's own item), or of content with no entry at all (picked in a rules-level choice): the qualified ID of that content. Several picked items can then use the same shared action. */
     source?: QualifiedId;
+    /** For a rules action the app runs at a moment of its clock: the action's `clock` (`turn-boundary`). */
+    clock?: 'turn-boundary';
   }[];
   /** Computed values on copies, by instance ID: for each copy that has any, `{ <name>: value }`. A value whose formula fails is left out, with a `formula-error` in `errors`. */
   copies?: Record<string, Record<string, Literal>>;
@@ -2141,6 +2184,17 @@ export type ComputeSheetOutput = {
   situational: QualifiedId[];
   /** Choices that apply and need picks, in a pre-order walk of the activations: the rules-level choices first, then each activation's own choices, each followed by those of what it picked, before those of the activations it grants. They are the `choices` entries with `open` true, with `picked` their number of picks. */
   pending: PendingChoice[];
+  /** The auras the character projects now: each `auras` entry of its active holder content whose `when` holds, in activation order. The app applies an entry of each (`applyEffect` with `source`, `aura` and `appliedBy` the character's `id`) to every creature inside it that `affects` names, and removes it as the creature leaves or the aura leaves this list. */
+  auras?: {
+    /** The content declaring the aura. */
+    source: QualifiedId;
+    aura: Slug;
+    /** The copy the content belongs to, if any. */
+    entry?: InstanceId;
+    /** The aura's `size`, evaluated: how far it reaches in the game's unit. Absent when it declares none. */
+    size?: number;
+    affects: 'all' | 'allies' | 'enemies';
+  }[];
   /** What the rules offer the character now: its stored ephemeral follow-ups in file order, then its derived offers whose condition holds, the rules' in declaration order and then content's in instance order. Derived from the character file alone, so every app, a reload and an import see the same list. An app runs any entry with startAction and its ID, and dismisses only ephemeral ones. */
   offers?: ListedFollowUp[];
   competing: CompetingOptions[];
@@ -2261,6 +2315,7 @@ export type DescribeActionInput = {
     source?: QualifiedId;
   };
   links?: Links;
+  appliers?: Appliers;
 };
 
 export type DescribedParam = {
@@ -2336,6 +2391,7 @@ export type ListOptionsInput = {
   character: CharacterFile;
   choice: ChoicePath;
   links?: Links;
+  appliers?: Appliers;
 };
 
 export type ListOptionsOutput =
@@ -2465,6 +2521,7 @@ export type StartActionInput = {
   situational?: Record<string, Literal>;
   policy?: ActionPolicy;
   links?: Links;
+  appliers?: Appliers;
   /** The other characters taking part, by role the action declares: per role, a list of views in order, each `{ id, values }` from that character's own computeSheet. IDs are unique across the call (`duplicate-id`). Values match the role's declared fields by field ID without the pack; a wrong type, or two values with one field ID, is `invalid-link-value`. An undeclared role, or a count outside the role's `min`/`max`, is `invalid-participants`. */
   participants?: Record<string, View[]>;
   /** Answers to replay, one per pause in order, each exactly as continueAction takes it. The result is what startAction then continueAction with each answer in turn would return, with the same policy and dice function: finished, paused at the first pause left unanswered, or a failure. An answer that doesn't fit its pause, or one left over after the action finishes, is `answer-mismatch` with `data.index` (its index here) and, for a pause, `data.needs`. Omitted or empty, startAction runs as without it. */
@@ -2625,9 +2682,10 @@ export type FollowUp = {
   while?: Condition;
   /** Evaluated on the character after the whole batch (an ephemeral offer) or on the current character (a derived offer); the follow-up fires or is offered only when it holds. */
   when?: Condition;
-  /** Whose follow-up it is: `self` (the default, the character the batch changed) or `{ link: <slot> }`, the character filling one of its link slots. A follow-up to a link names the linked character's action, fields and content by qualified ID. */
+  /** Whose follow-up it is: `self` (the default, the character the batch changed), `{ link: <slot> }`, the character filling one of its link slots, or `applied`, every character holding an entry this character applied (`changes` only, each a removeEffect, toggleEffect, setState or adjustState naming applied entries by query, which then reaches only the entries this character applied). A follow-up to a link names the linked character's action, fields and content by qualified ID. */
   to?:
     | 'self'
+    | 'applied'
     | {
         link: Name;
       };
@@ -3181,6 +3239,9 @@ export type ErrorCode =
   | 'template-without-copy'
   | 'link-field-mismatch'
   | 'invalid-create-offer'
+  | 'invalid-clock-action'
+  | 'invalid-aura'
+  | 'invalid-applied-change'
   | 'invalid-family'
   | 'invalid-extension'
   | 'link-start-mismatch'
