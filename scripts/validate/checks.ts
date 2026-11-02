@@ -101,11 +101,12 @@ function actionIds(def: { actions?: ActionOrUse[] }): Set<string> {
 
 function targetKind(
   target: Effect['target'],
-): 'field' | 'fields' | 'roll' | 'incoming' | 'choice' | 'step' {
+): 'field' | 'fields' | 'roll' | 'incoming' | 'choice' | 'step' | 'action' {
   if (typeof target === 'string' || 'formula' in target) return 'field';
   if ('fields' in target) return 'fields';
   if ('choices' in target) return 'choice';
   if ('steps' in target) return 'step';
+  if ('actions' in target) return 'action';
   return 'rolls' in target ? 'roll' : 'incoming';
 }
 
@@ -1724,11 +1725,13 @@ export class PackChecker {
       this.tagList(effect.target.choices, file, label);
     } else if ('steps' in effect.target) {
       this.tagList(effect.target.steps, file, label);
+    } else if ('actions' in effect.target) {
+      this.tagList(effect.target.actions, file, label);
     }
     if (
       this.contentOwner === 'rules' &&
       typeof effect.target === 'object' &&
-      ('choices' in effect.target || 'steps' in effect.target) &&
+      ('choices' in effect.target || 'steps' in effect.target || 'actions' in effect.target) &&
       effect.target.from === 'self'
     )
       this.report.error(file, `${label}: from: self is for content's effects, not the rules'`);
@@ -1743,6 +1746,23 @@ export class PackChecker {
         );
       for (const change of value.changes ?? [])
         this.proposedChange(change, file, label, false, new Set(), value.to);
+    }
+    // A params effect adds parameters named by the content that writes it, as an option effect.
+    if (effect.op === 'params') {
+      if (this.contentOwner === undefined)
+        this.report.error(
+          file,
+          `${label}: params effects are only for the rules' effects and content items and types (their effects, choices and inline options)`,
+        );
+      else
+        for (const [name, decl] of Object.entries(effect.value as Record<string, ValueDecl>)) {
+          const key = `${this.contentOwner}.params.${name}`;
+          this.requiredKeys.add(decl.label ?? `${key}.name`);
+          this.optionalKeys.add(`${key}.description`);
+          if (decl.type === 'enum')
+            for (const value of decl.values ?? [])
+              this.requiredKeys.add(`${key}.values.${value}.name`);
+        }
     }
     // An option effect adds an option named by the content item that writes it, so it belongs on a
     // content item: its effects, or its choices' and inline options'.
@@ -1896,6 +1916,26 @@ export class PackChecker {
     });
   }
 
+  private addedNames: Set<string> | undefined;
+
+  /** Every parameter name a `params` effect in scope adds: a `use` may fix one. */
+  private addedParamNames(): Set<string> {
+    if (this.addedNames) return this.addedNames;
+    const names = new Set<string>();
+    const add = (effects: readonly Effect[] | undefined) => {
+      for (const e of effects ?? [])
+        if (e.op === 'params') for (const name of Object.keys(e.value ?? {})) names.add(name);
+    };
+    for (const pid of this.scope) {
+      const rules = this.ruleset.rules.get(pid);
+      add(rules?.effects.map(({ def }) => def));
+      for (const [, { def }] of rules?.contentTypes ?? []) add(def.effects);
+      for (const { doc } of this.ruleset.packContent.get(pid) ?? []) add(doc.effects);
+    }
+    this.addedNames = names;
+    return names;
+  }
+
   private actionOrUse(action: ActionOrUse, file: string, keyPrefix: string): void {
     if ('use' in action) {
       const target = this.ruleset.action(action.use, this.scope);
@@ -1904,7 +1944,7 @@ export class PackChecker {
         return;
       }
       for (const name of Object.keys(action.params ?? {})) {
-        if (!target.def.params?.[name])
+        if (!target.def.params?.[name] && !this.addedParamNames().has(name))
           this.report.error(file, `action "${action.use}" has no parameter "${name}"`);
       }
       return;

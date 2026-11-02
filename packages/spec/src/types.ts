@@ -4,7 +4,8 @@
 /** Something a character can do that needs dice or decisions: a cascade of steps. Each roll or choice step is a checkpoint where, per the app's policy, the engine continues automatically or pauses. Later steps see earlier results as `steps.<id>.*` and branch flags as `flags.<name>`; the item making the action is `item` (base plus templates) and its copy is `self`; app-supplied parameters are `params.<name>`; situational choices are `situational.<id>`; other characters taking part are `participants.<role>` (and, in an `each` step, `participant`). Where `item` and `self` are rebound (a choice step's candidates, a formula a change passes on), the action's own are `action.item` and `action.self`, and the current step is `action.step`. */
 export type Action = {
   id: Slug;
-  tags?: Tags;
+  /** The action's tags (display groups, `params` effects). Entries may be `{ formula }`, evaluated per listing with its `item`, `self` and the character's fields; a formula that fails leaves only the written tags. */
+  tags?: TagList;
   /** When the action is offered, e.g. `self.equipped`. */
   available?: Condition;
   /** `false`: computeSheet doesn't list the action and apps don't show it, but an `action` step with `source` or `entry` still runs it (while `available` holds), and so does `startAction`. For an action only other actions run: a class's part of a shared rules action. Default `true`. */
@@ -34,6 +35,8 @@ export type ActionOrUse =
       use: Ref;
       /** `false`: this use isn't listed by computeSheet, as an action's own `listed: false`. Default: the used action's. */
       listed?: boolean;
+      /** When this use is offered, ANDed with the used action's own `available`: evaluated for each listing with its `item`, `self` and the character's fields, in the pack that writes the use (a condition's saving throw only while it is "save ends"). */
+      available?: Condition;
       params?: Record<string, Formula>;
       scope?: ActionScope;
     };
@@ -604,9 +607,9 @@ export type ProposedChange = {
   field?: FieldRef | ComputedField;
   entry?: string | ProposedEntry | ComputedEntry;
   key?: Name;
-  /** Evaluated by the action, unless the change has `copies` (or `applied`) and this reads `self`, `item` or `batch`: then it is passed on for applyChanges to evaluate per copy, with each path rooted at `steps`, `flags`, `params` or `action` replaced by its value as a literal. */
+  /** Evaluated by the action, unless the change has `copies` (or `applied`) and this reads `self`, `item` or `batch`: then it is passed on for applyChanges to evaluate per copy, with each path rooted at `steps`, `flags`, `params` or `action` replaced by its value as a literal. Evaluated by the action, it may give dice (`-1d6`): the action rolls them, a dice checkpoint at the step matched by the change's tags, logs the faces, and the change carries the total. */
   value?: Formula;
-  /** Evaluated by the action, unless the change has `copies` (or `applied`) and this reads `self`, `item` or `batch`: then it is passed on for applyChanges to evaluate per copy, with each path rooted at `steps`, `flags`, `params` or `action` replaced by its value as a literal. */
+  /** Evaluated by the action, unless the change has `copies` (or `applied`) and this reads `self`, `item` or `batch`: then it is passed on for applyChanges to evaluate per copy, with each path rooted at `steps`, `flags`, `params` or `action` replaced by its value as a literal. Evaluated by the action, it may give dice (`-1d6`): the action rolls them, a dice checkpoint at the step matched by the change's tags, logs the faces, and the change carries the total. */
   by?: Formula;
   tags?: TagList;
   /** adjust only: split this change by tag. The engine emits one adjust per distinct tag under `by` among the roll items of step `roll`, evaluating the change's `by` formula once per group with `part` bound (`part.total`, `part.tag`). Each emitted change carries the change's tags plus the group's tag; items with no tag under `by` form one more group carrying only the change's tags. Incoming-change effects (resistance) then apply to each change separately. */
@@ -1404,8 +1407,9 @@ export type Effect = {
     | 'grant'
     | 'rollModifier'
     | 'option'
-    | 'changes';
-  /** A formula for add/set/multiply/atLeast/atMost (on rolls and on incoming changes, `add` accepts dice: `1d4`; on rolls, `atLeast` and `atMost` take an integer and bound the roll's total after the dice); a grant value object for grant; a roll modifier for rollModifier; an option for option; changes for a tagged changes step for changes. On a roll's parts, `set` takes a formula (dice or a number) that replaces each matching part. */
+    | 'changes'
+    | 'params';
+  /** A formula for add/set/multiply/atLeast/atMost (on rolls and on incoming changes, `add` accepts dice: `1d4`; on rolls, `atLeast` and `atMost` take an integer and bound the roll's total after the dice); a grant value object for grant; a roll modifier for rollModifier; an option for option; changes for a tagged changes step for changes; parameter declarations for params. On a roll's parts, `set` takes a formula (dice or a number) that replaces each matching part. */
   value?: unknown;
   /** Condition for the effect to be active. `self` is the character's copy of the item carrying it. For `option`, the added option is offered only while this holds; it also sees the action context and `action`. For `changes`, the changes are added only while this holds, with the same context and `participant` in an `each` step. On an incoming target, it also sees `incoming`. */
   when?: Condition;
@@ -1454,6 +1458,14 @@ export type ThenChange = {
   by?: Formula;
 };
 
+/** Actions as they are listed and started, by their tags. Only op `params`. */
+export type ActionTarget = {
+  /** Action tags; the effect adds its parameters to a listed action carrying any of them, its computed tags evaluated for the listing (a tag matches itself and every tag below it). */
+  actions: Tags;
+  /** `self`: only actions listed for the copy carrying this effect (not on the rules' effects). `any` (default): every matching action of the character. */
+  from?: 'self' | 'any';
+};
+
 /** Changes steps of actions as they run, by tag. Only op `changes`. */
 export type StepTarget = {
   /** Changes step tags; the effect adds its changes to a step carrying any of them (a tag matches itself and every tag below it; tags an `action` step adds count). */
@@ -1462,20 +1474,25 @@ export type StepTarget = {
   from?: 'self' | 'any';
 };
 
-/** What a `changes` effect adds to a tagged changes step: `changes`, proposed after the step's own each time the step runs (per participant in an `each` step) while the effect's `when` holds, `to` this `to`, else the step's. In its `when` and `changes`, `item` and `self` are the content carrying the effect (`entry: self` is that copy), the action's own are `action.item`, `action.self` and `action.step`, and the action's `params`, `situational`, `steps`, `flags`, `participants` (and `participant` in an `each` step) are bound. */
+/** What a `changes` effect adds to a tagged changes step each time the step runs (per participant in an `each` step) while the effect's `when` holds: `flags`, set before the step's own changes, and `changes`, proposed after the step's own (or, with `order: before`, before them), `to` this `to`, else the step's. In its `when`, `flags` and `changes`, `item` and `self` are the content carrying the effect (`entry: self` is that copy), the action's own are `action.item`, `action.self` and `action.step`, and the action's `params`, `situational`, `steps`, `flags`, `participants` (and `participant` in an `each` step) are bound. */
 export type StepChanges = {
-  changes: ProposedChange[];
+  /** Flags set as the step runs, before its own changes, as a branch case's: each formula is evaluated in the effect's context and set as `flags.<name>`, in instance order of the effects, so the step's own `when`s and changes, later effects and later steps read it. In an `each` step, it is set for the current participant, as an `each` branch's. A flag already set is replaced. The action must set each flag elsewhere, in a branch case or a written option: one it doesn't is `formula-error` (cause `unknown-name`) at load, and a value of another type `type-mismatch`. */
+  flags?: OptionFlags;
+  /** `before`: the changes are proposed before the step's own (after any it releases), so an added gain counts before the step's own spending clamps the field. Default `after`. */
+  order?: 'before' | 'after';
+  changes?: ProposedChange[];
   /** Who the changes are for, as a `changes` step's `to`. Default: the step's `to`. */
   to?: Destination;
 };
 
-/** A character field (by ID, or a string formula giving one), a set of fields (by a static query over their tags), rolls as they happen (by tag), incoming changes (by field and tag), an action's choice steps (by tag), or an action's changes steps (by tag). */
+/** A character field (by ID, or a string formula giving one), a set of fields (by a static query over their tags), rolls as they happen (by tag), incoming changes (by field and tag), an action's choice steps (by tag), an action's changes steps (by tag), or actions (by tag). */
 export type EffectTarget =
   | FieldRef
   | RollTarget
   | IncomingTarget
   | ChoiceTarget
   | StepTarget
+  | ActionTarget
   | FieldsTarget
   | FormulaTarget;
 
@@ -1666,6 +1683,12 @@ export type LogEntry = {
   of?: string;
   /** The faces the step used. A roll step with no dice items is not a checkpoint and has none. */
   faces?: number[];
+  /** Dice entries of a proposed change's rolled amount (a `by` that gave dice): the dice, as canonical text. `faces` are the faces used and `total` the amount the change carries; `tags` and `field` are the change's. */
+  dice?: string;
+  /** A rolled amount's entry: the change's tags. */
+  tags?: Tags;
+  /** A rolled amount's entry: the field the change adjusts, when it names one. */
+  field?: string;
   /** Dice entries of a random draw on a choice or allocate step: what the face picked among. Its one face is `faces[0]`. */
   draw?: Draw;
   /** The picked option ID; `#done` when a repeated choice step was ended early. */
@@ -1725,6 +1748,8 @@ export type ActionNeed = {
     count: number;
     sides: number | 'F';
     tags?: Tags;
+    /** A proposed change's rolled amount: the field the change adjusts (its `tags` are the change's). */
+    field?: string;
     zero?: boolean;
   }[];
   /** A dice pause for a random draw on a choice or allocate step: one die, as many sides as `among` has entries; the face picks among them. */
@@ -2240,6 +2265,8 @@ export type DescribeActionInput = {
 
 export type DescribedParam = {
   name: Name;
+  /** A parameter a `params` effect adds (listed after the action's own): the content whose text names it, `<content id>`, `<pack>:types.<type>` for a content type's effect, or `<pack>:rules`. Without its own `label`, its text is `<content key>.params.<name>.name` in that pack (`rules.params.<name>.name`, `types.<type>.params.<name>.name`). */
+  addedBy?: string;
   type: DeclValueType;
   /** id/set/list: `field`, `tag`, `string` or the qualified content type. */
   of?: string;
@@ -2259,7 +2286,7 @@ export type DescribedParam = {
   /** id/set/list of a content type, `field` or `tag`: every ID startAction takes, its `where` applied. Content in ruleset order (hidden items left out), fields in ruleset order, tags sorted. */
   options?: string[];
   unique?: true;
-  /** The parameter's own label key; without it, `<actionKey>.params.<name>.name`. */
+  /** The parameter's own label key; without it, `<actionKey>.params.<name>.name` (an added one's, by `addedBy`). */
   label?: I18nKey;
 };
 
@@ -3161,6 +3188,7 @@ export type ErrorCode =
   | 'invalid-stacking'
   | 'template-field-mismatch'
   | 'unknown-role'
+  | 'invalid-added-param'
   | 'circular-extends'
   | 'safety-limit-exceeded'
   | 'unknown-action'

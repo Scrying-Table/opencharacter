@@ -50,6 +50,7 @@ An **action** ([`action.schema.json`](../schemas/action.schema.json)) is a casca
 
 | Property       | Meaning                                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tags`         | The action's tags; `{ formula }` entries are evaluated per listing, with its `item` and `self` (below)                                                                   |
 | `available`    | When the action is offered (`self.equipped`)                                                                                                                             |
 | `listed`       | `false`: computeSheet doesn't list it, so only other actions (and `startAction`) run it (below)                                                                          |
 | `params`       | Values the app supplies (a target's AC, which stat to test), declared like state; `min`/`max` are enforced as the action starts ([engine-actions.md](engine-actions.md)) |
@@ -82,6 +83,74 @@ have no text (`pnpm validate` warns).
     - id: confirm
       kind: choice # actions.weapon-attack.steps.confirm.prompt
       options: [{ id: hit }, { id: miss }]
+```
+
+**A `use` entry** names a rules action (`use`) and may fix some of its `params` (formulas),
+leave it unlisted (`listed: false`), set its `scope`, and give its own `available`: evaluated
+for each listing with its `item` and `self`, in the pack that writes the use, and ANDed with the
+used action's. Draw Steel's conditions offer the shared saving throw only while "save ends":
+
+```yaml
+contentTypes:
+  condition:
+    actions:
+      - { use: saving-throw, scope: applied, available: "self.duration == 'save'" }
+```
+
+**The action's own tags** may hold `{ formula }` entries too, evaluated for each listing with its
+`item`, `self` and the character's fields (no `params`, `steps` or `flags`); a formula that fails
+leaves only the written tags. computeSheet's listing, display groups, describeAction and `params`
+effects see them. One shared ability action is then tagged with each ability's usage and
+keywords:
+
+```yaml
+- id: use-ability
+  tags: [ability, { formula: "'usage.' + item.usage" }, { formula: item.tags }]
+```
+
+**Parameters content adds.** A content item's, template's, content type's or the rules'
+`params` effect (`target: { actions: [<tag>], from? }`, [effects.md](effects.md#targets)) adds
+parameters to the listed actions whose tags match, while its `when` holds. Each is declared as
+the action's own and given by the app the same way; describeAction lists it after the action's
+own with `addedBy`. The action's own formulas see only the parameters it declares; the content
+reads its own as `params.<name>` in its roll, option and `changes` effects. So an ability
+chooses its damage type on each use, and a feature adds an opt-in to a rules action.
+
+- An added parameter is `optional` or has a `default`, and only the run the app starts
+  (startAction, a follow-up taken up, a handoff's run on its own character) has it: an `action`
+  step's nested run doesn't. A required one is the load error `invalid-added-param`.
+- Its `min` and `max` see the effect's roots, as its `when` (`item` and `self` the content's,
+  the listing's as `action.item` and `action.self`); a content parameter's `where` sees the
+  candidate as `item` and the listing's as `action`, as an action's own does.
+- A `use` may fix an added parameter in its `params`, as its own.
+- A name an action its literal target tags reach already declares, or one another `params`
+  effect adds with another declaration over target tags that meet, is `invalid-added-param` at
+  load. An action reached only through computed tags keeps its own parameter, and the first
+  effect's declaration wins.
+- Text: `<content key>.params.<name>.name`: an item's or a template's own key,
+  `types.<type>` for a content type's effect, `rules` for the rules'.
+
+```yaml
+# Hurl Element: the element is chosen on each use of the shared ability action.
+effects:
+  - target: { actions: [ability], from: self }
+    op: params
+    value:
+      element:
+        { type: enum, values: [acid, cold, corruption, fire, lightning, poison], default: fire }
+  - target: { rolls: [damage], from: self }
+    op: add
+    value: 2
+    tags: [{ formula: "'damage.' + params.element" }]
+# Appeal to the Muses: an opt-in as the turn starts, its drama added to the turn's.
+effects:
+  - target: { actions: [turn.start] }
+    op: params
+    value: { appeal: { type: boolean, default: false } }
+  - target: { steps: [turn.start] }
+    op: changes
+    when: params.appeal
+    value: { changes: [{ type: adjust, field: drama.current, by: 1 }] }
 ```
 
 **Computed tags.** In an action, any `tags` list (on a roll step, a roll part, an action step, a roll effect's added item, or a proposed change) may contain `{ formula }` entries. These are evaluated when the step runs. A formula gives one tag (a string) or several (a list of strings), spread in the entry's place, in order; an empty list adds nothing. Each must be a declared tag (`unknown-tag` otherwise), anything else is `type-mismatch`, and a tag already in the list (from an earlier entry) isn't added again. One shared attack action can then tag a longsword's damage `damage.slashing` and a bow's `damage.piercing`:
@@ -558,6 +627,58 @@ effects:
         - type: applyEffect
           source: "'conditions.persistent-damage'"
           state: { damage: 1d10, damageType: "'fire'" }
+```
+
+The effect may also set the action's **flags**, as an added option does: `value.flags` is set as
+the step runs, before its own changes (per participant in an `each` step), so the step's own
+`when`s, later steps and the outcome read it. A flag must be one the action sets elsewhere, in a
+branch case or a written option (checked at load). So content adds to what a shared action works
+out (forced movement it reports), or turns off a change of its own ("instead"). With
+`order: before`, the changes are proposed before the step's own instead of after, so a gain
+counts before the step's own spending clamps the field.
+
+```yaml
+# A shared ability action: each target's forced movement in flags, a condition when it lands.
+- id: hit
+  kind: changes
+  each: target
+  to: target
+  tags: [ability.hit]
+  changes:
+    - { type: applyEffect, when: flags.landed, source: flags.cond }
+# Paragon order: the judged creature is pulled 2 × Presence squares.
+- target: { steps: [ability.hit] }
+  op: changes
+  when: participant.id in judgment.targets
+  value:
+    flags: { move: "'pull'", moveDistance: 2 * characteristics.presence.score }
+# It Is Justice You Fear: a frightened target takes psychic damage instead of being frightened.
+- target: { steps: [ability.hit] }
+  op: changes
+  when: participant.conditions.frightened && flags.landed
+  value:
+    flags: { landed: 'false' }
+    changes: [{ type: adjust, field: stamina.current, by: -3, tags: [damage.psychic] }]
+# Teamwork Has Its Place: 1 surge before the power roll, so the ability's own surges can use it.
+- target: { steps: [ability.pay] }
+  op: changes
+  value:
+    order: before
+    changes: [{ type: adjust, field: surges.current, by: 1 }]
+```
+
+**Rolled amounts.** A proposed change's `by` (an `adjust`, `adjustState` or `adjustQuantity`)
+may give dice: the action rolls it with its dice function as the change is resolved, a dice
+checkpoint at the step's path that the policy matches by the change's tags, and the change
+carries the total. The log records the `faces`, the `dice` and the `total`
+([engine-actions.md](engine-actions.md#other-steps)). A Talent's strain costs `1d6` Stamina:
+
+```yaml
+- target: { steps: [ability.after] }
+  op: changes
+  when: action.item.strained && heroic.current < 0
+  value:
+    changes: [{ type: adjust, field: stamina.current, by: -1d6, tags: [strain] }]
 ```
 
 **Offering a follow-up**. A proposed `offerFollowUp` names a follow-up of the
