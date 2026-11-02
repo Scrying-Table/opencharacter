@@ -35,7 +35,7 @@ function run(action: { id: string; entry?: string }): ActionResult {
   let result = startAction(ruleset, tamsin(), { action, params: { targetAc: 15 }, policy });
   for (let i = 0; i < 20 && 'status' in result && result.status === 'paused'; i++) {
     const faces = (result.needs.dice ?? []).flatMap((d) =>
-      Array.from({ length: d.count }, () => Math.ceil(d.sides / 2)),
+      Array.from({ length: d.count }, () => Math.ceil(Number(d.sides) / 2)),
     );
     result = continueAction(ruleset, result, { faces }, policy);
   }
