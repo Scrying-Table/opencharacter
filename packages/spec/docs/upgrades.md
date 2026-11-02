@@ -13,7 +13,7 @@ character could refer to something that no longer means the same:
 | Change                                                                           | `kind`                 | Covered by                                                  |
 | -------------------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------- |
 | A content item is removed                                                        | `content-removed`      | `renameContent` or `removeContent`                          |
-| An item's content type changes                                                   | `content-type-changed` | `removeContent`                                             |
+| An item's content type changes                                                   | `content-type-changed` | `changeContentType` or `removeContent`                      |
 | An input field is removed, or stops being an input                               | `field-removed`        | `renameField` or `removeField`                              |
 | An input field's type changes, or an enum loses values                           | `field-type-changed`   | `mapValues` or `removeField`                                |
 | A state key is removed or its type changes (on a content type, item or template) | `state-removed`        | `renameState`, `removeState`, `moveState` or `stateToField` |
@@ -21,6 +21,7 @@ character could refer to something that no longer means the same:
 | An option is removed from a `values` or inline-options choice                    | `option-removed`       | `renameOption`                                              |
 | A new required choice appears on existing content or in the rules                | `choice-added`         | `requireChoice`                                             |
 | An existing item becomes standard (a standard copies query now matches it)       | `standard-copy-added`  | `adoptStandard`                                             |
+| A remaining item stops granting content it granted                               | `grant-removed`        | `grantsToCopies` or `removeContent`                         |
 
 `standard-copy-added` is for an item of the pack, in both releases with the same
 type, that the standard copies queries ([content.md](content.md#standard-copies)) match in the
@@ -28,6 +29,14 @@ new release but not the old: the rules' and every item's, whichever loaded pack 
 Saved characters hold the item as an ordinary entry, which would otherwise stay beside the new
 standard copy. An item that stops being standard, and a new item that is standard from the start,
 are not shape changes.
+
+`grant-removed` is for an item of the pack in both releases whose holder grants (its own and its
+type's, with a literal `item`) named content on the old release that they don't name on the new
+one, when that content is on the new release and not grant-only there: saved copies of the item
+would lose it. Its ID is the holder's then the granted content's (`<pack>:<holder>/<granted>`).
+A `grantsToCopies` step covers it when its `item` and `type` (where given) match the holder, and
+a `removeContent` of the holder or of the granted content covers it too. Grants under choices
+and formula grants aren't compared: their content depends on a sheet.
 
 An item's state key that the item's content type declares in the new release, with the same
 type, is not removed: its copies keep their saved values (a key moved to the type, so a pack
@@ -77,6 +86,8 @@ shape changes and these errors:
 - **`upgrade-script-incomplete`:** each shape change must be covered by a step of that script, as
   in the table. `data` names the uncovered change. Interface changes need neither a script nor
   a step ([below](#a-packs-interface)).
+- **`upgrade-step-mismatch`:** a `changeContentType` step's `from` and `to` must be the item's
+  content types on the previous and new release (`data`: `pack`, `id`, `from`, `to`).
 
 A pack's release carries **all** its upgrade scripts, old ones included, so any pinned version
 can be upgraded from the latest release.
@@ -129,24 +140,26 @@ steps:
 The steps are a [fixed set](../data/upgrade-steps.json). A step applies to every place saved
 state can refer to what it names:
 
-| Op              | Params                                                                        | Effect                                                                                                                                                                                                                                                           |
-| --------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `renameContent` | `from`, `to`                                                                  | Replaces the content ID everywhere: entry `item`s, `templates`, `applied` sources, picked `option`s at any depth, members of `set` input values, the owner part of prefixed choice keys, and the keys of saved grant state (`grants`)                            |
-| `removeContent` | `id`                                                                          | Removes entries holding it (with their picks), removes it from `templates`, `applied`, picks (with their nested picks) and `set` input values, and drops its saved grant state (`grants`)                                                                        |
-| `renameField`   | `from`, `to`                                                                  | Moves the saved value                                                                                                                                                                                                                                            |
-| `removeField`   | `field`                                                                       | Drops the saved value                                                                                                                                                                                                                                            |
-| `setDefault`    | `field`, `value`                                                              | Where the field has no saved value, saves the formula's value. The formula is evaluated against the **original** character under the **old** ruleset                                                                                                             |
-| `mapValues`     | `field`, `map`                                                                | Replaces a saved value found as a key of `map` (compared as text) with the mapped value                                                                                                                                                                          |
-| `renameState`   | `item?`, `type?`, `from`, `to`                                                | Renames a state key in the saved state of copies, picks and granted content ([characters.md](characters.md#granted-contents-state)): of content `item`, of content of type `type`, or both when both are given (every one when neither is)                       |
-| `removeState`   | `item?`, `type?`, `key`                                                       | Drops the state key from the same places as `renameState`; a pick's or grant's `state` left empty goes, and a grant entry with it                                                                                                                                |
-| `moveState`     | `item?`, `type?`, `from`, `to?`, and `grant`, or `owner?`, `choice`, `option` | Moves state key `from` off copies (of `item`, of `type`, or both, as for `renameState`) to key `to` (default `from`) of a pick or of granted content's saved state ([below](#moving-state))                                                                      |
-| `stateToField`  | `item?`, `type?`, `from`, `to?`                                               | Moves state key `from` off copies (of `item`, of `type`, or both, as for `renameState`) to the copy's own value of item field `to` (default `from`), a field its type marks `perCopy` on the new release ([below](#state-to-a-copys-field))                      |
-| `renameChoice`  | `owner?`, `from`, `to`                                                        | Renames a choice key on entries holding `owner`, in picks of `owner`, and in prefixed keys (`<owner>/<choice>`). Without `owner`, renames a rules-level choice. A prefixed `from` moves another content's choice onto `owner`'s ([below](#prefixed-choice-keys)) |
-| `removeChoice`  | `owner?`, `choice`                                                            | Removes the choice's picks, with their nested picks, wherever `renameChoice` would rename it                                                                                                                                                                     |
-| `renameOption`  | `owner?`, `choice`, `from`, `to?`                                             | Replaces a picked option of the choice (`from`) with `to`; without `to`, removes the pick and its nested picks                                                                                                                                                   |
-| `requireChoice` | `owner?`, `choice`                                                            | Records that a new required choice exists; the upgraded character reports it as pending. Listed in the report when the character holds `owner` (a copy or a pick of it, with picks of its own saved or not), always for a rules-level choice                     |
-| `renameTag`     | `from`, `to`                                                                  | Replaces the tag in saved `set` values of `of: tag` input fields (and in the homebrew, below)                                                                                                                                                                    |
-| `adoptStandard` | `item`                                                                        | Renames the first entry holding the item (features, then inventory, in file order) to the item's standard copy ID, keeping its state, picks and templates; nothing when an entry has that ID                                                                     |
+| Op                  | Params                                                                        | Effect                                                                                                                                                                                                                                                                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `renameContent`     | `from`, `to`                                                                  | Replaces the content ID everywhere: entry `item`s, `templates`, `applied` sources, picked `option`s at any depth, members of `set` input values, the owner part of prefixed choice keys, and the keys of saved grant state (`grants`)                                                                                                            |
+| `removeContent`     | `id`                                                                          | Removes entries holding it (with their picks), removes it from `templates`, `applied`, picks (with their nested picks) and `set` input values, and drops its saved grant state (`grants`)                                                                                                                                                        |
+| `changeContentType` | `id`, `from`, `to`                                                            | Content `id` changed type from `from` to `to`: its copies move to the list the new type keeps them in (`inventory` for carried types, else `features`), lose `equipped` where the new type isn't equippable, and its copies, picks and granted content keep only the state keys it declares on the new release ([below](#a-content-type-change)) |
+| `grantsToCopies`    | `item?`, `type?`                                                              | Content that copies (of `item`, of `type`, or both; every copy when neither is) were granted directly, and no longer are, becomes copies of its own ([below](#granted-content-to-copies))                                                                                                                                                        |
+| `renameField`       | `from`, `to`                                                                  | Moves the saved value                                                                                                                                                                                                                                                                                                                            |
+| `removeField`       | `field`                                                                       | Drops the saved value                                                                                                                                                                                                                                                                                                                            |
+| `setDefault`        | `field`, `value`                                                              | Where the field has no saved value, saves the formula's value. The formula is evaluated against the **original** character under the **old** ruleset                                                                                                                                                                                             |
+| `mapValues`         | `field`, `map`                                                                | Replaces a saved value found as a key of `map` (compared as text) with the mapped value                                                                                                                                                                                                                                                          |
+| `renameState`       | `item?`, `type?`, `from`, `to`                                                | Renames a state key in the saved state of copies, picks and granted content ([characters.md](characters.md#granted-contents-state)): of content `item`, of content of type `type`, or both when both are given (every one when neither is)                                                                                                       |
+| `removeState`       | `item?`, `type?`, `key`                                                       | Drops the state key from the same places as `renameState`; a pick's or grant's `state` left empty goes, and a grant entry with it                                                                                                                                                                                                                |
+| `moveState`         | `item?`, `type?`, `from`, `to?`, and `grant`, or `owner?`, `choice`, `option` | Moves state key `from` off copies (of `item`, of `type`, or both, as for `renameState`) to key `to` (default `from`) of a pick or of granted content's saved state ([below](#moving-state))                                                                                                                                                      |
+| `stateToField`      | `item?`, `type?`, `from`, `to?`                                               | Moves state key `from` off copies (of `item`, of `type`, or both, as for `renameState`) to the copy's own value of item field `to` (default `from`), a field its type marks `perCopy` on the new release ([below](#state-to-a-copys-field))                                                                                                      |
+| `renameChoice`      | `owner?`, `from`, `to`                                                        | Renames a choice key on entries holding `owner`, in picks of `owner`, and in prefixed keys (`<owner>/<choice>`). Without `owner`, renames a rules-level choice. A prefixed `from` moves another content's choice onto `owner`'s ([below](#prefixed-choice-keys))                                                                                 |
+| `removeChoice`      | `owner?`, `choice`                                                            | Removes the choice's picks, with their nested picks, wherever `renameChoice` would rename it                                                                                                                                                                                                                                                     |
+| `renameOption`      | `owner?`, `choice`, `from`, `to?`                                             | Replaces a picked option of the choice (`from`) with `to`; without `to`, removes the pick and its nested picks                                                                                                                                                                                                                                   |
+| `requireChoice`     | `owner?`, `choice`                                                            | Records that a new required choice exists; the upgraded character reports it as pending. Listed in the report when the character holds `owner` (a copy or a pick of it, with picks of its own saved or not), always for a rules-level choice                                                                                                     |
+| `renameTag`         | `from`, `to`                                                                  | Replaces the tag in saved `set` values of `of: tag` input fields (and in the homebrew, below)                                                                                                                                                                                                                                                    |
+| `adoptStandard`     | `item`                                                                        | Renames the first entry holding the item (features, then inventory, in file order) to the item's standard copy ID, keeping its state, picks and templates; nothing when an entry has that ID                                                                                                                                                     |
 
 **Owners.** A choice step's `owner` is content (local or qualified), or the rules when absent.
 A choice nested in an inline option is named by a path, as its change ID writes it: the owner,
@@ -221,6 +234,50 @@ left empty goes. Like `moveState`, it covers the key's `state-removed`.
 - { op: stateToField, item: stunts.custom, from: limit }
 ```
 
+### A content type change
+
+`changeContentType` is for a release that moves an item to another content type, when its saved
+copies, picks and grants still mean the same: a 5E monster's trait that becomes a `monsterAction`
+so a stat block can list it with the monster's actions. It covers that item's
+`content-type-changed` when `from` and `to` are the item's types on the old and new release.
+`removeContent` covers it too, for an item whose saved uses can't carry over.
+
+```yaml
+- { op: changeContentType, id: monsters.aboleth.amphibious, from: trait, to: monsterAction }
+```
+
+### Granted content to copies
+
+`grantsToCopies` is for a release where content stops granting what it held and adds copies
+instead, so each holder can drop or change its own: a 5E monster whose stat block was granted by
+its `monster` item, and is now copied onto the sheet when the monster is created. For each saved
+copy the step names, content its item or type granted it directly on the old release (the grants
+whose `when` held on the old sheet, their `forEach` and formula items resolved, not the grants of
+its templates, picks or inline options) becomes a copy when the copy doesn't hold it by a holder
+grant on the new release (a grant whose `item` is a formula isn't followed). The old release's
+IDs are read through the `renameContent` steps before it on the upgrade's path, scripts
+included. Content still missing from the new release, or grant-only there, gets no copy: its
+saved grant state is dropped and the report's `errors` has `grant-not-copied` (`data`: `entry`,
+`item`). Each holder's granted content is handled once per upgrade: a later `grantsToCopies`
+that names the holder again (listed twice, or by `item` after `type`) skips it. Each new copy:
+
+- goes right after its holder when both go in the same list (`features` or `inventory`, by the
+  new type's `carried`), else at the end of its list, in grant order;
+- gets the instance ID `<local id with dots as hyphens>-<n>`, the smallest `n` ≥ 1 no entry or
+  applied entry has, as an action's `addItem` does;
+- takes as its `state` the grant's `state` values, overridden by the saved state of the
+  granted content on the holder (`grants`), each key the content declares on the new release;
+- takes the picks saved in the holder's tree under `<qualified id>/<choice>` as its own
+  (`<choice>`), and the saved state and picks of content it grants in turn, except content the
+  holder still grants itself on the new release, which keeps its state there.
+
+That state and those picks leave the holder. A grant's preset picks aren't saved and don't
+carry over: the new copy's choices are its own.
+
+```yaml
+- { op: grantsToCopies, type: monster }
+```
+
 `adoptStandard` is for a release that makes an item standard
 ([content.md](content.md#standard-copies)): entry IDs are the app's choice, so the script names
 the item. `checkRelease` requires one per `standard-copy-added`.
@@ -271,7 +328,9 @@ ruleset to move it to. See [`engine/upgrade.schema.json`](../schemas/engine/upgr
    - **`spec`:** when the character's `specVersion` changed, `{ from, steps }`: the version it
      had, and each spec upgrade step that changed it, as `{ version, step }`. Absent for a
      character already at `SPEC_VERSION`.
-   - **`errors`:** the upgraded character's `computeSheet` errors (a reference no script handled).
+   - **`errors`:** `grant-not-copied` for each granted content a `grantsToCopies` step couldn't
+     copy ([above](#granted-content-to-copies)), then the upgraded character's `computeSheet`
+     errors (a reference no script handled).
      For a character with homebrew, `homebrew-error` for each load error of the homebrew on `to`;
      the upgraded character is still returned, so the app can show the report and let the player
      fix the custom content.

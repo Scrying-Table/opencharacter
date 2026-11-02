@@ -2051,6 +2051,7 @@ export type CheckReleaseOutput = {
       | 'option-removed'
       | 'choice-added'
       | 'standard-copy-added'
+      | 'grant-removed'
       | 'content-type-removed'
       | 'item-field-removed'
       | 'item-field-values-removed'
@@ -2578,7 +2579,7 @@ export type UpgradeOutput =
             step: SpecUpgradeStep;
           }[];
         };
-        /** The upgraded character's computeSheet errors (references no script handled). */
+        /** The upgraded character's computeSheet errors (references no script handled), after `grant-not-copied` for each granted content a grantsToCopies step couldn't copy. */
         errors?: EngineError[];
         /** Each place in the character's homebrew a step rewrote, in order. */
         homebrew?: {
@@ -3161,6 +3162,8 @@ export type UpgradeStep = {
   op:
     | 'renameContent'
     | 'removeContent'
+    | 'changeContentType'
+    | 'grantsToCopies'
     | 'renameField'
     | 'removeField'
     | 'setDefault'
@@ -3180,13 +3183,14 @@ export type UpgradeStep = {
     | 'renameTag'
     | 'renameAction'
     | 'adoptStandard';
-  /** The old name. renameContent, renameField, renameContentType, renameItemField, renameTag, renameAction: the ID. renameState, moveState, stateToField: the state key. renameChoice: the choice ID on `owner`, or a prefixed choice key as saved (`<qualified id>/<choice>`, a granted or template content's choice), whose picks in `owner`'s trees become its choice `to`. renameOption: the picked option. */
+  /** The old name. changeContentType: the item's content type on the previous release. renameContent, renameField, renameContentType, renameItemField, renameTag, renameAction: the ID. renameState, moveState, stateToField: the state key. renameChoice: the choice ID on `owner`, or a prefixed choice key as saved (`<qualified id>/<choice>`, a granted or template content's choice), whose picks in `owner`'s trees become its choice `to`. renameOption: the picked option. */
   from?: string;
-  /** The new name, as for `from`. moveState: the target's state key (default `from`). stateToField: the item field (default `from`). renameOption: the replacing option; absent, the pick is removed. */
+  /** The new name, as for `from`. changeContentType: the item's content type on the new release. moveState: the target's state key (default `from`). stateToField: the item field (default `from`). renameOption: the replacing option; absent, the pick is removed. */
   to?: string;
+  /** removeContent, changeContentType: the content item. */
   id?: string;
   field?: FieldRef;
-  /** renameState, removeState, moveState, stateToField: limits the step to content of this content type (with `item`, both must match). renameItemField, removeItemField, mapItemValues: the homebrew items' content type. */
+  /** renameState, removeState, moveState, stateToField, grantsToCopies: limits the step to content of this content type (with `item`, both must match). renameItemField, removeItemField, mapItemValues: the homebrew items' content type. */
   type?: Name;
   value?: Formula;
   map?: Record<string, Literal>;
@@ -3194,7 +3198,7 @@ export type UpgradeStep = {
   owner?: ChoiceOwner;
   /** removeChoice, renameOption, requireChoice: the choice on `owner`, as saved (a slot is its own key). moveState: the choice whose pick receives the value; a slotted one is searched slot by slot. */
   choice?: Slug;
-  /** adoptStandard: the item whose standard copy an entry becomes. renameState, removeState, moveState, stateToField: limits the step to content `item` and homebrew items extending it (with `type`, both must match). */
+  /** adoptStandard: the item whose standard copy an entry becomes. renameState, removeState, moveState, stateToField, grantsToCopies: limits the step to content `item` and homebrew items extending it (with `type`, both must match). */
   item?: Ref;
   /** removeState: the state key to drop. */
   key?: Name;
@@ -3285,10 +3289,12 @@ export type ErrorCode =
   | 'conflicting-roll-modifiers'
   | 'no-upgrade-path'
   | 'character-spec-unsupported'
+  | 'grant-not-copied'
   | 'version-not-increased'
   | 'version-bump-too-small'
   | 'missing-upgrade-script'
   | 'upgrade-script-incomplete'
+  | 'upgrade-step-mismatch'
   | 'unknown-follow-up';
 
 /** Codes in `data/rules-issue-codes.json`. */

@@ -144,11 +144,13 @@ issues.too-many-copies: '{type}: too many are held (at most {limit}).'
 issues.too-many-copies.item: '{item}: too many copies are held (at most {limit}).'
 errors.conflicting-roll-modifiers: 'This roll has both advantage and disadvantage, which this game does not allow.'
 errors.no-upgrade-path: 'This character cannot be moved to an older version of {pack}.'
+errors.grant-not-copied: 'The upgrade could not keep {item} on {entry}: it is gone or can no longer be added.'
 errors.character-spec-unsupported: 'This character was saved with OCF spec {specVersion}, newer than this app supports ({implements}).'
 errors.version-not-increased: 'The new version of {pack} must be greater than {previous}.'
 errors.version-bump-too-small: 'This release changes saved characters, so it needs a breaking version bump: the minor version before 1.0.0, the major version from 1.0.0 on.'
 errors.missing-upgrade-script: 'This release changes saved characters and needs an upgrade script from {previous}.'
 errors.upgrade-script-incomplete: 'The upgrade script does not cover a change ({kind} {id}).'
+errors.upgrade-step-mismatch: 'The upgrade script says {id} changed from type {from} to {to}, which it did not.'
 
 # A roll summary's comparison codes: the fallback wording of a band's `tests`
 # when its pack has no `bands.<set>.<band>.condition` text. `value` is the test's number.
