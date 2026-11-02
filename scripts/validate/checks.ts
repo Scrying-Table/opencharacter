@@ -1029,6 +1029,8 @@ export class PackChecker {
       const where = `${owner} aura ${aura.id}`;
       if (auras.has(aura.id)) this.report.error(file, `${where}: duplicate aura id`);
       auras.add(aura.id);
+      if (!aura.effects?.length && !aura.immuneTo?.length)
+        this.report.error(file, `${where}: an aura needs effects or immuneTo`);
       this.optionalKeys.add(`${owner}.auras.${aura.id}.name`);
       const ids = Object.keys(aura.fields ?? {});
       for (const id of ids)
@@ -1040,11 +1042,18 @@ export class PackChecker {
         if (!found || found.def.type !== decl.type)
           this.report.error(file, `${where}: "${id}" is not a ${decl.type} field of this pack`);
       }
-      for (const effect of aura.effects) {
+      for (const effect of aura.effects ?? []) {
         if ((effect.scope ?? 'applied') !== 'applied')
           this.report.error(file, `${where}: an aura's effects are on whoever is inside (applied)`);
         this.effect(effect, file, where);
       }
+      for (const def of aura.immuneTo ?? [])
+        if ((def.scope ?? 'applied') !== 'applied')
+          this.report.error(
+            file,
+            `${where} immunity ${def.id}: an aura's immunities are on whoever is inside (applied)`,
+          );
+      this.immunities(aura.immuneTo ?? [], file, where);
     }
     this.followUps(
       (item.followUps ?? []).map((fu) => ({ def: fu, file })),
