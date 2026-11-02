@@ -140,35 +140,57 @@ const tagsMeet = (a: string, b: string) =>
 /**
  * `params` effects: each added parameter is optional or has a default (nested runs and
  * startAction's other callers never give it), its name isn't one an action its literal target
- * tags reach declares, and no other effect adds it with another declaration where both may reach
- * one action. Actions count by the pack that wrote them, reached over packs that meet on the
- * target tag (effects.md, Which packs a tag target reaches).
+ * tags reach declares, and no other effect adds it with another declaration where both may apply:
+ * their target tags meet over packs that meet on the tag, or one action's literal tags reach
+ * both. Two `from: self` effects of different content items are exempt unless one item names
+ * both (itself, its grants, its choices' items) and has an action both reach: the copy's own
+ * run takes both. Content a choice's query offers isn't followed; there the first declaration
+ * wins. Actions count by the pack that wrote them, reached over packs that meet on the target
+ * tag (effects.md, Which packs a tag target reaches).
  */
 function checkAddedParams(
   ruleset: Ruleset,
   err: (code: string, data: Record<string, unknown>) => void,
 ): void {
-  const added: { source: string; pack: string; tags: string[]; name: string; decl: ValueDecl }[] =
-    [];
+  interface Added {
+    source: string;
+    pack: string;
+    tags: string[];
+    name: string;
+    decl: ValueDecl;
+    /**
+     * The content item carrying a `from: self` effect: it reaches its own runs and its holder
+     * copy's own actions.
+     */
+    self?: string;
+  }
+  const added: Added[] = [];
   const walkChoices = (
     choices: readonly Choice[] | undefined,
     source: string,
     pack: string,
+    item?: string,
   ): void => {
     for (const choice of choices ?? []) {
-      walk(choice.effects, source, pack);
+      walk(choice.effects, source, pack, item);
       if ('options' in choice.from)
         for (const o of choice.from.options) {
-          walk(o.effects, source, pack);
-          walkChoices(o.choices, source, pack);
+          walk(o.effects, source, pack, item);
+          walkChoices(o.choices, source, pack, item);
         }
     }
   };
-  const walk = (effects: readonly Effect[] | undefined, source: string, pack: string): void => {
+  const walk = (
+    effects: readonly Effect[] | undefined,
+    source: string,
+    pack: string,
+    item?: string,
+  ): void => {
     for (const e of effects ?? []) {
       if (e.op !== 'params' || typeof e.target !== 'object' || !('actions' in e.target)) continue;
+      const self = e.target.from === 'self' ? item : undefined;
       for (const [name, decl] of Object.entries((e.value ?? {}) as Record<string, ValueDecl>))
-        added.push({ source, pack, tags: e.target.actions, name, decl });
+        added.push({ source, pack, tags: e.target.actions, name, decl, ...(self ? { self } : {}) });
     }
   };
   for (const type of Object.values(ruleset.contentTypes)) {
@@ -176,8 +198,10 @@ function checkAddedParams(
     walk(type.effects, source, type.pack);
   }
   for (const item of Object.values(ruleset.content)) {
-    walk(item.effects, item.qid, item.scopes?.effects ?? item.pack);
-    walkChoices(item.choices, item.qid, item.scopes?.choices ?? item.pack);
+    // A template is part of each copy using it, so its effects may share a run with the copy's.
+    const self = item.type === 'template' ? undefined : item.qid;
+    walk(item.effects, item.qid, item.scopes?.effects ?? item.pack, self);
+    walkChoices(item.choices, item.qid, item.scopes?.choices ?? item.pack, self);
   }
   for (const e of ruleset.rules.effects) walk([e], `${e.pack}:rules`, e.pack);
   for (const choice of Object.values(ruleset.rules.choices))
@@ -206,6 +230,74 @@ function checkAddedParams(
     e.tags.some(
       (t) => a.tags.some((tag) => tagsMeet(t, tag)) && packsMeet(ruleset, e.pack, a.pack, t),
     );
+  // Whether two effects' target tags meet (one is the other or below it) over packs that meet on
+  // the broader tag.
+  const targetsMeet = (a: Added, b: Added) =>
+    a.tags.some((t) =>
+      b.tags.some(
+        (u) => tagsMeet(t, u) && packsMeet(ruleset, a.pack, b.pack, t.length <= u.length ? t : u),
+      ),
+    );
+  // Items that hold others (themselves, their grants, their choices' items) and the actions of
+  // their copies' own runs, which every held item's `from: self` effects reach.
+  const holders = new Map<
+    string,
+    { held: Set<string>; actions: { pack: string; def: ActionDef }[] }[]
+  >();
+  if (added.some((a) => a.self !== undefined)) {
+    for (const item of Object.values(ruleset.content)) {
+      const held = new Set<string>([item.qid]);
+      const grants = (list: readonly Grant[] | undefined) => {
+        for (const g of list ?? []) if (typeof g.item === 'string') held.add(g.item);
+      };
+      const choices = (list: readonly Choice[] | undefined, pack: string) => {
+        for (const choice of list ?? []) {
+          if ('items' in choice.from)
+            for (const ref of choice.from.items) {
+              const qid = resolveContent(ruleset, ref, pack);
+              if (qid) held.add(qid);
+            }
+          if ('options' in choice.from)
+            for (const o of choice.from.options) {
+              grants(o.grants);
+              choices(o.choices, pack);
+            }
+        }
+      };
+      grants(item.grants);
+      choices(item.choices, item.scopes?.choices ?? item.pack);
+      if (held.size < 2) continue;
+      const own: { pack: string; def: ActionDef }[] = [];
+      const list = (defs: readonly ActionOrUse[] | undefined, pack: string) => {
+        for (const a of defs ?? []) {
+          if (!('use' in a)) own.push({ pack, def: a });
+          else {
+            const qid = resolveAction(ruleset, a.use, pack);
+            const def = qid ? ruleset.rules.actions[qid] : undefined;
+            if (def) own.push({ pack: def.pack, def });
+          }
+        }
+      };
+      list(item.actions, item.scopes?.actions ?? item.pack);
+      const type = ruleset.contentTypes[item.type];
+      if (type) list(type.actions, type.pack);
+      if (own.length === 0) continue;
+      const holder = { held, actions: own };
+      for (const qid of held) holders.set(qid, [...(holders.get(qid) ?? []), holder]);
+    }
+  }
+  // Whether an effect may reach a holder's action: by its literal tags, or by any tag over packs
+  // that meet when it has computed ones.
+  const mayReachAny = (e: Added, a: { pack: string; def: ActionDef }) =>
+    mayReach(e, { pack: a.pack, tags: writtenTags(a.def.tags) }) ||
+    ((a.def.tags ?? []).some((t) => typeof t !== 'string') &&
+      e.tags.some((t) => packsMeet(ruleset, e.pack, a.pack, t)));
+  const shareRun = (a: Added, b: Added) =>
+    (holders.get(a.self ?? '') ?? []).some(
+      (h) =>
+        h.held.has(b.self ?? '') &&
+        h.actions.some((act) => mayReachAny(a, act) && mayReachAny(b, act)),
+    );
   for (const [i, p] of added.entries()) {
     const data = { param: p.name, source: p.source };
     if (!p.decl.optional && p.decl.default === undefined)
@@ -217,7 +309,12 @@ function checkAddedParams(
     }
     for (const other of added.slice(0, i)) {
       if (other.name !== p.name || JSON.stringify(other.decl) === JSON.stringify(p.decl)) continue;
-      if (literal.some((a) => mayReach(p, a) && mayReach(other, a)))
+      if (p.self !== undefined && other.self !== undefined && p.self !== other.self) {
+        if (shareRun(p, other))
+          err('invalid-added-param', { ...data, reason: 'conflict', other: other.source });
+        continue;
+      }
+      if (targetsMeet(p, other) || literal.some((a) => mayReach(p, a) && mayReach(other, a)))
         err('invalid-added-param', { ...data, reason: 'conflict', other: other.source });
     }
   }

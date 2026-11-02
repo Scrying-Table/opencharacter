@@ -157,7 +157,12 @@ monster starts) offer it beside the core's own:
   steps, and so do two add-ons of one core. An unrelated game loaded in the same ruleset (the
   `@opencharacter/packs` bundle) never reaches another game's own actions, even with the same
   tags; a homebrew depending on both is reached by each, but runs a game's content-type action
-  only under that game's effects and its own.
+  only under that game's effects and its own. Two add-ons of one core that add one parameter
+  name with different declarations over tags that meet fail to load (`invalid-added-param`),
+  even before any action carries the tag. Two items' `from: self` parameters load side by side,
+  unless an item holding both (granting them, or listing them in a choice's `items`) has an
+  action both reach; on a copy's own action that a choice's query fills, the first declaration
+  wins ([dice-and-actions.md](../../../packages/spec/docs/dice-and-actions.md#actions)).
 
 An add-on can't change what the core wrote out by ID: a fixed kit list, a random table over core
 IDs, a choice over a query whose `where` lists IDs. Those are for the core pack to open up, with
